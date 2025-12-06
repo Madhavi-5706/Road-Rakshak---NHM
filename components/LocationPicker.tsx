@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { MapPin, Check, X, Loader2, AlertTriangle, Search, LocateFixed } from 'lucide-react';
+import { MapPin, Check, X, Loader2, Search, LocateFixed, Navigation } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 
 const GEOAPIFY_API_KEY = "7aa08a8dfa7c401fbdf3fb69f7f06ca7";
@@ -13,18 +13,54 @@ interface LocationPickerProps {
 export const LocationPicker: React.FC<LocationPickerProps> = ({ onConfirm, onCancel, initialLocation }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
-  const markerRef = useRef<any>(null);
+  // Track if movement was triggered by code (search/suggestion) vs user interaction
+  const isProgrammaticMove = useRef(false);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedAddress, setSelectedAddress] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
+  
+  // Suggestion State
+  const [suggestions, setSuggestions] = useState<any[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  
   const { t } = useLanguage();
 
   useEffect(() => {
     if (mapContainerRef.current && !mapInstanceRef.current) initMap();
     return () => { if (mapInstanceRef.current) { mapInstanceRef.current.remove(); mapInstanceRef.current = null; } };
   }, []);
+
+  // Autocomplete Effect
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (searchQuery.trim().length > 2) {
+        const fetchSuggestions = async () => {
+          try {
+            const res = await fetch(`https://api.geoapify.com/v1/geocode/autocomplete?text=${encodeURIComponent(searchQuery)}&apiKey=${GEOAPIFY_API_KEY}&limit=5`);
+            const data = await res.json();
+            if (data.features) {
+              setSuggestions(data.features);
+              setShowSuggestions(true);
+            }
+          } catch (e) {
+            console.error("Autocomplete Error:", e);
+          }
+        };
+        // Only fetch if the query doesn't match the selected address exactly (avoids reopen on selection)
+        if (searchQuery !== selectedAddress) {
+             fetchSuggestions();
+        }
+      } else {
+        setSuggestions([]);
+        setShowSuggestions(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery, selectedAddress]);
 
   const initMap = async () => {
     try {
@@ -33,7 +69,12 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({ onConfirm, onCan
       // Default to Center of India
       const defaultLat = 20.5937, defaultLng = 78.9629;
       
-      const map = L.map(mapContainerRef.current, { zoomControl: false }).setView([defaultLat, defaultLng], 5);
+      const map = L.map(mapContainerRef.current, { 
+          zoomControl: false,
+          fadeAnimation: true,
+          zoomAnimation: true
+      }).setView([defaultLat, defaultLng], 5);
+      
       mapInstanceRef.current = map;
       L.control.zoom({ position: 'topright' }).addTo(map);
 
@@ -42,19 +83,30 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({ onConfirm, onCan
       });
       tileLayer.addTo(map);
 
-      const customIcon = L.divIcon({
-        className: 'custom-div-icon',
-        html: `<div style="background-color: #000080; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"></div>`,
-        iconSize: [16, 16], iconAnchor: [8, 8]
+      // Event: Moving (Dragging/Zooming)
+      map.on('movestart', () => {
+         if (!isProgrammaticMove.current) {
+            setSelectedAddress(t('locating'));
+         }
       });
 
-      const marker = L.marker([defaultLat, defaultLng], { icon: customIcon, draggable: true }).addTo(map);
-      markerRef.current = marker;
+      // Event: Move End (Fetch Address)
+      map.on('moveend', () => {
+         // If we moved the map programmatically (e.g. search result), 
+         // preserve the formatted address from search instead of reverse geocoding
+         if (isProgrammaticMove.current) {
+             isProgrammaticMove.current = false;
+             return;
+         }
+         
+         const { lat, lng } = map.getCenter();
+         fetchAddress(lat, lng);
+      });
 
-      const updateLoc = (lat: number, lng: number) => { setSelectedAddress("Identifying..."); fetchAddress(lat, lng); };
-      
-      map.on('click', (e: any) => { marker.setLatLng(e.latlng); updateLoc(e.latlng.lat, e.latlng.lng); });
-      marker.on('dragend', (e: any) => { const { lat, lng } = marker.getLatLng(); updateLoc(lat, lng); });
+      // Event: Click to Pan
+      map.on('click', (e: any) => { 
+          map.flyTo(e.latlng); 
+      });
 
       // Ensure tiles render immediately
       map.whenReady(() => {
@@ -69,8 +121,13 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({ onConfirm, onCan
               const data = await res.json();
               if (data.features?.length > 0) {
                   const { lat, lon, formatted } = data.features[0].properties;
-                  map.setView([lat, lon], 16); marker.setLatLng([lat, lon]);
-                  setSelectedAddress(formatted || initialLocation); locResolved = true;
+                  
+                  isProgrammaticMove.current = true;
+                  map.setView([lat, lon], 16);
+                  
+                  setSelectedAddress(formatted || initialLocation); 
+                  setSearchQuery(formatted || initialLocation);
+                  locResolved = true;
               }
           } catch {}
       }
@@ -78,9 +135,8 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({ onConfirm, onCan
       if (!locResolved && navigator.geolocation) {
          navigator.geolocation.getCurrentPosition(pos => {
             const { latitude, longitude } = pos.coords;
+            // Native geolocation doesn't give address, so let moveend fetch it (don't set programmatic flag)
             map.flyTo([latitude, longitude], 16); 
-            marker.setLatLng([latitude, longitude]);
-            updateLoc(latitude, longitude); 
             setLoading(false);
          }, (err) => {
             console.warn("Geolocation failed", err);
@@ -101,30 +157,61 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({ onConfirm, onCan
     try {
       const res = await fetch(`https://api.geoapify.com/v1/geocode/reverse?lat=${lat}&lon=${lng}&apiKey=${GEOAPIFY_API_KEY}`);
       const data = await res.json();
-      if (data.features?.length > 0) setSelectedAddress(data.features[0].properties.formatted);
-      else setSelectedAddress(`${lat.toFixed(6)}, ${lng.toFixed(6)}`);
-    } catch { setSelectedAddress(`${lat.toFixed(6)}, ${lng.toFixed(6)}`); }
+      if (data.features?.length > 0) {
+          const formatted = data.features[0].properties.formatted;
+          setSelectedAddress(formatted);
+          setSearchQuery(formatted);
+      } else {
+          const coords = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+          setSelectedAddress(coords);
+          setSearchQuery(coords);
+      }
+    } catch { 
+        const coords = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+        setSelectedAddress(coords); 
+        setSearchQuery(coords);
+    }
   };
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault(); if (!searchQuery.trim()) return; setIsSearching(true);
+    setShowSuggestions(false);
     try {
         const res = await fetch(`https://api.geoapify.com/v1/geocode/search?text=${encodeURIComponent(searchQuery)}&apiKey=${GEOAPIFY_API_KEY}&limit=1`);
         const data = await res.json();
         if (data.features?.length > 0) {
             const { lat, lon, formatted } = data.features[0].properties;
-            mapInstanceRef.current?.setView([lat, lon], 16); markerRef.current?.setLatLng([lat, lon]);
+            
+            isProgrammaticMove.current = true;
+            mapInstanceRef.current?.setView([lat, lon], 16);
+            
             setSelectedAddress(formatted);
+            setSearchQuery(formatted);
         } else alert("Location not found");
     } catch {} finally { setIsSearching(false); }
   };
 
+  const handleSuggestionClick = (feature: any) => {
+      const { lat, lon, formatted } = feature.properties;
+      setSearchQuery(formatted);
+      setSelectedAddress(formatted);
+      setShowSuggestions(false);
+      setSuggestions([]); // clear suggestions
+      
+      if (mapInstanceRef.current) {
+          isProgrammaticMove.current = true;
+          mapInstanceRef.current.setView([lat, lon], 16);
+      }
+  };
+
   const handleCurrentLocation = () => {
     if (!navigator.geolocation) return; setLoading(true);
+    setShowSuggestions(false);
     navigator.geolocation.getCurrentPosition(pos => {
         const { latitude, longitude } = pos.coords;
-        mapInstanceRef.current?.setView([latitude, longitude], 16); markerRef.current?.setLatLng([latitude, longitude]);
-        fetchAddress(latitude, longitude); setLoading(false);
+        // Don't set programmatic flag, so moveend triggers fetchAddress (reverse geocode)
+        mapInstanceRef.current?.setView([latitude, longitude], 16); 
+        setLoading(false);
     }, () => setLoading(false), {
        enableHighAccuracy: true
     });
@@ -147,10 +234,43 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({ onConfirm, onCan
            {error ? <div className="absolute inset-0 flex items-center justify-center text-red-600 font-bold bg-slate-100">{error}</div> : (
              <>
                <div ref={mapContainerRef} className="w-full h-full z-0" />
+               
+               {/* Fixed Center Marker Overlay */}
+               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 pointer-events-none">
+                  <div className="w-4 h-4 bg-india-navy rounded-full border-[3px] border-white shadow-md"></div>
+               </div>
+
                <div className="absolute top-4 left-4 z-[400] w-64 max-w-[calc(100%-80px)]">
                     <form onSubmit={handleSearch} className="relative shadow-md rounded-lg">
-                        <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder={t('search_address')} className="w-full pl-4 pr-10 py-2.5 rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-india-navy text-sm bg-white" />
+                        <input 
+                            type="text" 
+                            value={searchQuery} 
+                            onChange={(e) => setSearchQuery(e.target.value)} 
+                            placeholder={t('search_address')} 
+                            className="w-full pl-4 pr-10 py-2.5 rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-india-navy text-sm bg-white shadow-sm"
+                            onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true); }}
+                        />
                         <button type="submit" disabled={isSearching} className="absolute right-1 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-india-navy">{isSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}</button>
+                    
+                        {/* Suggestions Dropdown */}
+                        {showSuggestions && suggestions.length > 0 && (
+                            <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-lg shadow-xl border border-slate-200 max-h-60 overflow-y-auto animate-in fade-in zoom-in-95 duration-100 z-50">
+                                {suggestions.map((item, index) => (
+                                    <button
+                                        key={index}
+                                        type="button"
+                                        onMouseDown={(e) => { e.preventDefault(); handleSuggestionClick(item); }}
+                                        className="w-full text-left px-4 py-3 text-xs border-b border-slate-100 last:border-0 hover:bg-slate-50 transition-colors flex items-start gap-2"
+                                    >
+                                        <Navigation className="w-3 h-3 text-slate-400 mt-0.5 shrink-0" />
+                                        <div className="flex flex-col">
+                                            <span className="font-semibold text-slate-700">{item.properties.address_line1}</span>
+                                            <span className="text-slate-500">{item.properties.address_line2}</span>
+                                        </div>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                     </form>
                </div>
              </>
