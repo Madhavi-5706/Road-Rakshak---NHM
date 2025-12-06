@@ -1,14 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Header } from './components/Header';
 import { ImageUploader } from './components/ImageUploader';
 import { ResultCard } from './components/ResultCard';
 import { LoadingOverlay } from './components/LoadingOverlay';
 import { ImageAnnotator } from './components/ImageAnnotator';
 import { LogViewer } from './components/LogViewer';
+import { OnboardingTour } from './components/OnboardingTour';
+import { LanguageSelectorModal } from './components/LanguageSelectorModal';
 import { analyzeRoadImage, analyzeRiskProfile } from './services/geminiService';
 import { addLog } from './services/logService';
 import { AnalysisResult, RiskAnalysisResult } from './types';
-import { AlertCircle, ChevronRight } from 'lucide-react';
+import { AlertCircle, FileText } from 'lucide-react';
+import { useLanguage } from './contexts/LanguageContext';
 
 const App: React.FC = () => {
   const [image, setImage] = useState<string | null>(null);
@@ -19,6 +22,45 @@ const App: React.FC = () => {
   const [riskResult, setRiskResult] = useState<RiskAnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showLogs, setShowLogs] = useState(false);
+  
+  const [showLanguageSelector, setShowLanguageSelector] = useState(false);
+  const [showTour, setShowTour] = useState(false);
+  
+  const { t } = useLanguage();
+
+  useEffect(() => {
+    // Check if language has ever been selected
+    const savedLang = localStorage.getItem('roadguard_language');
+    if (!savedLang) {
+      setShowLanguageSelector(true);
+    } else {
+      // If language exists, check if tour has been seen
+      checkTourStatus();
+    }
+  }, []);
+
+  const checkTourStatus = () => {
+    const hasSeenTour = localStorage.getItem('roadguard_has_seen_tour');
+    if (!hasSeenTour) {
+      setShowTour(true);
+    }
+  };
+
+  const handleLanguageSelectionComplete = () => {
+    setShowLanguageSelector(false);
+    // After language selection, show tour immediately
+    setShowTour(true);
+  };
+
+  const handleTourComplete = () => {
+    setShowTour(false);
+    localStorage.setItem('roadguard_has_seen_tour', 'true');
+    addLog('TOUR_COMPLETE', 'User completed the onboarding tour', 'INFO');
+  };
+
+  const handleStartTour = () => {
+    setShowTour(true);
+  };
 
   const handleImageSelect = (file: File) => {
     setError(null);
@@ -41,13 +83,13 @@ const App: React.FC = () => {
     setAnnotatedImage(finalImage);
     setLocation(loc);
     setStep('analyzing');
-    addLog('ANNOTATION_CONFIRMED', `Target locked at location: ${loc}`, 'INFO');
+    addLog('ANNOTATION_CONFIRMED', `Location verified: ${loc}`, 'INFO');
     await performAnalysis(finalImage, loc);
   };
 
   const performAnalysis = async (base64Image: string, loc: string) => {
     try {
-      addLog('ANALYSIS_START', 'AI Vision Core and Risk Intelligence modules engaged.', 'INFO');
+      addLog('ANALYSIS_START', 'Initiating infrastructure analysis protocol.', 'INFO');
       const base64Content = base64Image.split(',')[1];
       const mimeType = base64Image.substring(base64Image.indexOf(':') + 1, base64Image.indexOf(';'));
       
@@ -60,12 +102,12 @@ const App: React.FC = () => {
       setRiskResult(riskData);
       setStep('result');
       
-      addLog('ANALYSIS_COMPLETE', `Detected: ${analysisData.hazard_detected} (Severity: ${analysisData.severity_score})`, 'SUCCESS');
+      addLog('ANALYSIS_COMPLETE', `Report Generated: ${analysisData.hazard_detected} (Severity: ${analysisData.severity_score})`, 'SUCCESS');
     } catch (err: any) {
       console.error(err);
-      setError("SYSTEM ERROR: Analysis sequence failed. Check connection uplink.");
+      setError("Analysis Failed. Please verify network connection and try again.");
       setStep('result');
-      addLog('ANALYSIS_FAILED', err.message || 'Unknown error occurred during processing', 'ERROR');
+      addLog('ANALYSIS_FAILED', err.message || 'Unknown error occurred', 'ERROR');
     }
   };
 
@@ -77,65 +119,63 @@ const App: React.FC = () => {
     setError(null);
     setLocation("");
     setStep('upload');
-    addLog('SYSTEM_RESET', 'User initiated a new audit session.', 'INFO');
+    addLog('SYSTEM_RESET', 'New audit session started.', 'INFO');
   };
 
   return (
-    <div className="flex-grow flex flex-col bg-[#030712] text-slate-300 relative overflow-hidden font-sans">
-      {/* Background Ambience */}
-      <div className="absolute inset-0 z-0 pointer-events-none">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-cyan-900/10 via-[#030712] to-[#030712]"></div>
-          <div className="absolute inset-0 opacity-10" 
-             style={{
-               backgroundImage: 'linear-gradient(rgba(6, 182, 212, 0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(6, 182, 212, 0.1) 1px, transparent 1px)', 
-               backgroundSize: '50px 50px'
-             }}>
-          </div>
-          <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-cyan-900/5 to-transparent"></div>
-      </div>
+    <div className="flex-grow flex flex-col bg-slate-50 text-slate-800 relative overflow-hidden font-sans min-h-screen">
+      
+      {showLanguageSelector && <LanguageSelectorModal onComplete={handleLanguageSelectionComplete} />}
+      
+      <Header onShowLogs={() => setShowLogs(true)} onStartTour={handleStartTour} />
 
-      <Header onShowLogs={() => setShowLogs(true)} />
-
+      {!showLanguageSelector && showTour && <OnboardingTour onComplete={handleTourComplete} onSkip={handleTourComplete} />}
       <LogViewer isOpen={showLogs} onClose={() => setShowLogs(false)} />
 
-      <main className="flex-grow container mx-auto px-4 py-6 z-10 flex flex-col h-[calc(100vh-80px)]">
+      <main className="flex-grow container mx-auto px-4 py-8 z-10 flex flex-col h-[calc(100vh-64px)]">
         {step === 'upload' && (
-          <div className="flex-grow flex flex-col items-center justify-center space-y-10 animate-in fade-in zoom-in-95 duration-700">
-             <div className="text-center space-y-6 max-w-3xl relative">
-               {/* Decorative elements behind text */}
-               <div className="absolute -top-20 left-1/2 -translate-x-1/2 w-64 h-64 bg-cyan-500/10 blur-[100px] rounded-full pointer-events-none"></div>
+          <div className="flex-grow flex flex-col items-center justify-center space-y-8 animate-in fade-in zoom-in-95 duration-700">
+             <div className="text-center space-y-4 max-w-2xl relative">
                
-               <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-cyan-500/20 bg-cyan-950/30 text-cyan-400 text-xs font-mono tracking-widest backdrop-blur-md shadow-lg shadow-cyan-900/20">
-                  <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse"></span>
-                  SYSTEM ONLINE v2.4
+               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-orange-200 bg-orange-50 text-orange-700 text-xs font-bold tracking-wide shadow-sm">
+                  <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse"></span>
+                  {t('official_portal')}
                </div>
                
-               <h2 className="text-5xl md:text-7xl font-bold text-white tracking-tight">
-                 Road<span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500">Guard</span>
+               <h2 className="text-4xl md:text-5xl font-bold text-slate-900 tracking-tight">
+                 {t('hero_title_1')} <br/>
+                 <span className="text-india-navy">{t('hero_title_2')}</span>
                </h2>
                
-               <p className="text-slate-400 text-lg md:text-xl font-light leading-relaxed max-w-xl mx-auto">
-                 Deploying AI vision to secure municipal infrastructure. <br/>
-                 <span className="text-cyan-500/80">Detect. Analyze. Report.</span>
+               <p className="text-slate-600 text-lg leading-relaxed max-w-lg mx-auto">
+                 {t('hero_desc')}
                </p>
              </div>
              
-             <div className="w-full max-w-xl relative">
-                <div className="absolute -inset-1 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-2xl blur opacity-20 animate-pulse"></div>
+             <div className="w-full max-w-xl">
                 <ImageUploader onImageSelect={handleImageSelect} />
              </div>
              
-             <div className="flex gap-8 text-xs font-mono text-slate-600 uppercase tracking-widest opacity-60">
-                <div className="flex items-center gap-2"><ChevronRight className="w-3 h-3 text-cyan-500" /> Secure Upload</div>
-                <div className="flex items-center gap-2"><ChevronRight className="w-3 h-3 text-cyan-500" /> Geo-Tagging</div>
-                <div className="flex items-center gap-2"><ChevronRight className="w-3 h-3 text-cyan-500" /> Real-time Audit</div>
+             <div className="grid grid-cols-3 gap-8 text-center pt-8 border-t border-slate-200 w-full max-w-2xl">
+                <div>
+                   <div className="text-2xl font-bold text-india-navy">24/7</div>
+                   <div className="text-xs text-slate-500 font-bold uppercase">{t('surveillance')}</div>
+                </div>
+                <div>
+                   <div className="text-2xl font-bold text-india-navy">AI</div>
+                   <div className="text-xs text-slate-500 font-bold uppercase">{t('data_insights')}</div>
+                </div>
+                <div>
+                   <div className="text-2xl font-bold text-india-navy">Geo</div>
+                   <div className="text-xs text-slate-500 font-bold uppercase">{t('geo_tagging')}</div>
+                </div>
              </div>
           </div>
         )}
 
         {step === 'annotate' && image && (
-            <div className="h-full flex flex-col items-center justify-center max-w-6xl mx-auto w-full animate-in zoom-in-95 duration-500">
-                 <div className="w-full h-full bg-[#0B1120] border border-slate-700/50 rounded-xl overflow-hidden shadow-2xl relative ring-1 ring-white/5">
+            <div className="h-full flex flex-col items-center justify-center max-w-6xl mx-auto w-full animate-in zoom-in-95 duration-500 py-4">
+                 <div className="w-full h-full bg-white border border-slate-200 rounded-lg shadow-lg overflow-hidden relative">
                     <ImageAnnotator 
                         imageBase64={image} 
                         onConfirm={handleAnnotationConfirm} 
@@ -146,72 +186,60 @@ const App: React.FC = () => {
         )}
 
         {(step === 'analyzing' || step === 'result') && annotatedImage && (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full min-h-0">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full min-h-0 py-4">
             
-            {/* Left Column: Visual Feed */}
+            {/* Left Column: Evidence */}
             <div className="lg:col-span-6 xl:col-span-7 h-full flex flex-col min-h-0">
-              <div className="relative rounded-xl overflow-hidden border border-slate-700/50 bg-[#0B1120] shadow-2xl flex-grow flex items-center justify-center group ring-1 ring-white/5">
+              <div className="relative rounded-lg overflow-hidden border border-slate-200 bg-white shadow-lg flex-grow flex items-center justify-center group p-2">
                  
                  {/* Image */}
                  <img 
                   src={annotatedImage} 
-                  alt="Target" 
-                  className="max-w-full max-h-full object-contain"
+                  alt="Evidence" 
+                  className="max-w-full max-h-full object-contain rounded"
                 />
                 
-                {/* HUD Overlays - Top */}
-                <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-start bg-gradient-to-b from-black/80 to-transparent">
-                   <div className="flex gap-2">
-                      <span className="px-2 py-1 bg-red-500/20 border border-red-500/50 text-[10px] font-mono font-bold text-red-400 rounded backdrop-blur-md flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse"></span> LIVE FEED
-                      </span>
-                      <span className="px-2 py-1 bg-cyan-950/60 border border-cyan-500/30 text-[10px] font-mono text-cyan-300 rounded backdrop-blur-md">
-                        ID: {Math.random().toString(36).substr(2, 6).toUpperCase()}
-                      </span>
-                   </div>
+                {/* Labels */}
+                <div className="absolute top-4 left-4">
+                   <span className="px-3 py-1.5 bg-india-navy text-white text-xs font-bold rounded shadow-md">
+                     {t('evidence_record')}
+                   </span>
                 </div>
 
-                {/* HUD Overlays - Bottom */}
-                <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent flex justify-between items-end">
-                   <div className="flex flex-col gap-1">
-                     <span className="text-[10px] text-slate-400 font-mono uppercase tracking-wider">Coordinates</span>
-                     <span className="px-3 py-1.5 bg-slate-900/80 border border-slate-600 text-slate-200 text-xs font-mono rounded flex items-center gap-2">
-                       <span className="text-cyan-500">LOC:</span> {location.substring(0, 30)}{location.length > 30 ? '...' : ''}
+                <div className="absolute bottom-4 left-4 right-4 bg-white/90 backdrop-blur border border-slate-200 p-3 rounded-lg shadow-sm flex justify-between items-center">
+                   <div className="flex flex-col">
+                     <span className="text-[10px] text-slate-500 font-bold uppercase">{t('location_coordinates')}</span>
+                     <span className="text-sm font-semibold text-slate-800">
+                       {location.substring(0, 40)}{location.length > 40 ? '...' : ''}
                      </span>
                    </div>
                    
-                   {/* Reset Button (Visible on Result) */}
                    {step === 'result' && (
                      <button 
                       onClick={handleReset}
-                      className="bg-slate-800/80 hover:bg-cyan-600 text-slate-200 hover:text-white border border-slate-600 hover:border-cyan-500 px-4 py-2 rounded font-mono text-xs font-bold uppercase tracking-wider transition-all shadow-lg backdrop-blur-sm"
+                      className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded text-xs font-bold uppercase transition-colors"
                      >
-                       New Audit
+                       {t('new_audit')}
                      </button>
                    )}
                 </div>
-                
-                {/* Scanning Laser (only when analyzing) */}
-                {step === 'analyzing' && (
-                  <div className="absolute inset-0 bg-gradient-to-b from-cyan-500/20 to-transparent animate-scan pointer-events-none border-b-2 border-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.5)]"></div>
-                )}
               </div>
             </div>
 
-            {/* Right Column: Analysis Terminal */}
+            {/* Right Column: Report */}
             <div className="lg:col-span-6 xl:col-span-5 h-full min-h-0 flex flex-col">
               {error ? (
-                <div className="h-full border border-red-900/50 bg-red-950/10 rounded-xl p-8 flex flex-col items-center justify-center text-center backdrop-blur-sm">
-                  <div className="w-20 h-20 bg-red-500/10 rounded-full flex items-center justify-center mb-6">
-                    <AlertCircle className="w-10 h-10 text-red-500 animate-pulse" />
+                <div className="h-full border border-red-200 bg-red-50 rounded-lg p-8 flex flex-col items-center justify-center text-center">
+                  <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mb-6 text-red-600">
+                    <AlertCircle className="w-8 h-8" />
                   </div>
-                  <h3 className="text-2xl font-bold text-white mb-2">Protocol Failure</h3>
-                  <p className="text-red-400/80 font-mono text-sm mb-8 bg-red-950/30 px-4 py-2 rounded border border-red-500/20">{error}</p>
+                  <h3 className="text-xl font-bold text-red-800 mb-2">{t('processing_error')}</h3>
+                  <p className="text-red-700 text-sm mb-6 max-w-xs">{error}</p>
                   <button 
                     onClick={handleReset}
-                    className="px-8 py-3 bg-red-600 hover:bg-red-500 text-white font-bold rounded-lg shadow-lg shadow-red-900/20 transition-all hover:scale-105 active:scale-95"
+                    className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded shadow-md transition-colors"
                   >
-                    Re-Initialize System
+                    {t('try_again')}
                   </button>
                 </div>
               ) : step === 'result' && result ? (

@@ -1,38 +1,29 @@
 import React from 'react';
-import { Scan, Cpu } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
+import { useLanguage } from '../contexts/LanguageContext';
 
 export const LoadingOverlay: React.FC = () => {
-  return (
-    <div className="h-full flex flex-col items-center justify-center bg-slate-900/80 backdrop-blur-sm border border-slate-700 rounded-lg p-8 relative overflow-hidden">
-      
-      {/* Background Grid Animation */}
-      <div className="absolute inset-0 bg-[linear-gradient(rgba(6,182,212,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(6,182,212,0.05)_1px,transparent_1px)] bg-[size:20px_20px]"></div>
+  const { t } = useLanguage();
 
-      <div className="relative z-10 flex flex-col items-center">
-        <div className="relative mb-8">
-           <div className="absolute inset-0 bg-cyan-500/20 blur-xl rounded-full animate-pulse"></div>
-           <Scan className="w-16 h-16 text-cyan-400 animate-spin-slow duration-[3s]" />
-           <Cpu className="w-6 h-6 text-white absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+  return (
+    <div className="h-full flex flex-col items-center justify-center bg-white border border-slate-200 rounded-lg p-8 relative shadow-lg">
+      
+      <div className="flex flex-col items-center text-center">
+        <div className="relative mb-6">
+           <div className="absolute inset-0 bg-india-navy/10 rounded-full animate-pulse"></div>
+           <Loader2 className="w-12 h-12 text-india-navy animate-spin" />
         </div>
 
-        <h3 className="text-xl font-mono font-bold text-white tracking-widest mb-4 animate-pulse">
-          ANALYZING SURFACE...
+        <h3 className="text-lg font-bold text-slate-800 mb-2">
+          {t('processing')}
         </h3>
 
-        <div className="w-48 space-y-1">
-           <div className="h-1 w-full bg-slate-800 overflow-hidden">
-             <div className="h-full bg-cyan-500 animate-[scan_1.5s_ease-in-out_infinite] w-1/2"></div>
-           </div>
-           <div className="flex justify-between text-[10px] font-mono text-cyan-500/70">
-              <span>DETECTING_HAZARDS</span>
-              <span>84%</span>
-           </div>
-        </div>
+        <p className="text-sm text-slate-500 max-w-xs mb-6">
+          {t('processing_desc')}
+        </p>
 
-        <div className="mt-8 text-xs font-mono text-slate-500 space-y-1 text-center">
-           <p>> Pothole_Detection_Model: LOADED</p>
-           <p>> Lighting_Audit: PENDING</p>
-           <p>> Infrastructure_Health: CALCULATING</p>
+        <div className="w-full max-w-[200px] bg-slate-100 rounded-full h-1.5 overflow-hidden">
+           <div className="h-full bg-india-navy animate-[scan_2s_ease-in-out_infinite] w-1/3 rounded-full"></div>
         </div>
       </div>
     </div>

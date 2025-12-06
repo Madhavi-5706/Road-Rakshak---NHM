@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { AnalysisResult, RiskAnalysisResult, AuthorityDetails } from '../types';
-import { AlertTriangle, CheckCircle2, AlertOctagon, Info, FileText, Loader2, Copy, Send, Terminal, MapPin, BarChart3, TrendingUp, Clock, AlertCircle, Satellite, LocateFixed, Building2, Phone, Mail, FileCheck, ShieldAlert, ArrowRight, X, ExternalLink, Map as MapIcon } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, AlertOctagon, Info, FileText, Loader2, Copy, Send, MapPin, BarChart3, TrendingUp, Clock, AlertCircle, LocateFixed, Building2, Phone, Mail, FileCheck, ArrowRight, X, ExternalLink, PieChart } from 'lucide-react';
 import { generateComplaintLetter, findRelevantAuthority } from '../services/geminiService';
 import { addLog } from '../services/logService';
+import { useLanguage } from '../contexts/LanguageContext';
 
-// Reusing the key from LocationPicker for consistency
 const GEOAPIFY_API_KEY = "7aa08a8dfa7c401fbdf3fb69f7f06ca7";
 
 interface ResultCardProps {
@@ -22,21 +22,22 @@ export const ResultCard: React.FC<ResultCardProps> = ({ result, riskResult, onRe
   const [authority, setAuthority] = useState<AuthorityDetails | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [showMailModal, setShowMailModal] = useState(false);
+  const { t, language } = useLanguage();
 
   // Map Refs
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
+  // Cache for coordinates to prevent API lag on tab switch
+  const coordsCache = useRef<{location: string, lat: number, lng: number} | null>(null);
 
-  // Initialize Map when Overview tab is active
   useEffect(() => {
     if (activeTab === 'overview' && result.location) {
-       // Small delay to allow DOM render
-       const timer = setTimeout(() => initMap(), 200);
+       // Reduced timeout for faster perception, enough for DOM to paint
+       const timer = setTimeout(() => initMap(), 50);
        return () => clearTimeout(timer);
     }
   }, [activeTab, result.location]);
 
-  // Cleanup map on unmount
   useEffect(() => {
     return () => {
         if(mapInstanceRef.current) {
@@ -48,110 +49,130 @@ export const ResultCard: React.FC<ResultCardProps> = ({ result, riskResult, onRe
 
   const initMap = async () => {
       if(!mapContainerRef.current) return;
-      if(mapInstanceRef.current) return; // Already initialized
+      if(mapInstanceRef.current) return;
       
       if (!(window as any).L) return;
       const L = (window as any).L;
 
-      try {
-          // Geocode the location string to get coords
-          const encoded = encodeURIComponent(result.location);
-          const res = await fetch(`https://api.geoapify.com/v1/geocode/search?text=${encoded}&apiKey=${GEOAPIFY_API_KEY}&limit=1`);
-          const data = await res.json();
-          
-          // Default to India center if fail
-          let lat = 20.5937;
-          let lng = 78.9629;
-          let zoom = 5;
-          
-          if (data.features && data.features.length > 0) {
-              lat = data.features[0].properties.lat;
-              lng = data.features[0].properties.lon;
-              zoom = 16;
-          }
+      // Default View (Center of India)
+      let lat = 20.5937;
+      let lng = 78.9629;
+      let zoom = 5;
+      let shouldUseCache = false;
 
-          const map = L.map(mapContainerRef.current, { 
-              zoomControl: false,
-              attributionControl: false,
-              dragging: false, // Static-ish view
-              scrollWheelZoom: false,
-              doubleClickZoom: false
-          }).setView([lat, lng], zoom);
-          
-          mapInstanceRef.current = map;
+      // Check Cache first to avoid lag
+      if (coordsCache.current && coordsCache.current.location === result.location) {
+          lat = coordsCache.current.lat;
+          lng = coordsCache.current.lng;
+          zoom = 16;
+          shouldUseCache = true;
+      }
 
-          // Dark/Cyber Theme Tiles if available, else OSM Bright
-          L.tileLayer(`https://maps.geoapify.com/v1/tile/dark-matter-brown/{z}/{x}/{y}.png?apiKey=${GEOAPIFY_API_KEY}`, {
-              maxZoom: 20, 
-              id: 'dark-matter-brown',
-          }).addTo(map);
+      // Initialize map immediately
+      const map = L.map(mapContainerRef.current, { 
+          zoomControl: false,
+          attributionControl: false,
+          dragging: false,
+          scrollWheelZoom: false,
+          doubleClickZoom: false
+      }).setView([lat, lng], zoom);
+      
+      mapInstanceRef.current = map;
 
+      L.tileLayer(`https://maps.geoapify.com/v1/tile/osm-bright/{z}/{x}/{y}.png?apiKey=${GEOAPIFY_API_KEY}`, {
+          maxZoom: 20, 
+          id: 'osm-bright',
+      }).addTo(map);
+
+      const addMarker = (lt: number, lg: number) => {
           const customIcon = L.divIcon({
             className: 'custom-div-icon',
-            html: `<div style="background-color: #ef4444; width: 14px; height: 14px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 10px rgba(239, 68, 68, 0.8);"></div>`,
+            html: `<div style="background-color: #ef4444; width: 14px; height: 14px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 5px rgba(0,0,0,0.3);"></div>`,
             iconSize: [14, 14],
             iconAnchor: [7, 7]
           });
+          L.marker([lt, lg], { icon: customIcon }).addTo(map);
+      };
 
-          L.marker([lat, lng], { icon: customIcon }).addTo(map);
-          
-      } catch (e) {
-          console.error("Map load failed", e);
+      if (shouldUseCache) {
+          addMarker(lat, lng);
+      } else {
+          // Fetch if not cached (Async update)
+          try {
+              const encoded = encodeURIComponent(result.location);
+              const res = await fetch(`https://api.geoapify.com/v1/geocode/search?text=${encoded}&apiKey=${GEOAPIFY_API_KEY}&limit=1`);
+              const data = await res.json();
+              
+              if (data.features && data.features.length > 0) {
+                  const newLat = data.features[0].properties.lat;
+                  const newLng = data.features[0].properties.lon;
+                  
+                  // Update Map & Cache
+                  map.setView([newLat, newLng], 16);
+                  addMarker(newLat, newLng);
+                  coordsCache.current = { location: result.location, lat: newLat, lng: newLng };
+              }
+          } catch (e) {
+              console.error("Map geocode failed", e);
+          }
       }
+      
+      // Fix for gray tiles
+      setTimeout(() => { map.invalidateSize(); }, 100);
   };
 
   const getSeverityConfig = (severity: string) => {
     switch (severity.toLowerCase()) {
       case 'high':
         return {
-          color: 'text-red-500',
-          bg: 'bg-red-500/10',
-          border: 'border-red-500/50',
-          icon: <AlertOctagon className="w-5 h-5 text-red-500" />,
-          label: 'CRITICAL'
+          color: 'text-red-700',
+          bg: 'bg-red-50',
+          border: 'border-red-200',
+          icon: <AlertOctagon className="w-5 h-5 text-red-600" />,
+          label: 'CRITICAL PRIORITY'
         };
       case 'medium':
         return {
-          color: 'text-amber-500',
-          bg: 'bg-amber-500/10',
-          border: 'border-amber-500/50',
-          icon: <AlertTriangle className="w-5 h-5 text-amber-500" />,
-          label: 'MODERATE'
+          color: 'text-orange-700',
+          bg: 'bg-orange-50',
+          border: 'border-orange-200',
+          icon: <AlertTriangle className="w-5 h-5 text-orange-600" />,
+          label: 'MODERATE PRIORITY'
         };
       case 'low':
         return {
-          color: 'text-blue-400',
-          bg: 'bg-blue-500/10',
-          border: 'border-blue-500/50',
-          icon: <Info className="w-5 h-5 text-blue-400" />,
-          label: 'MINOR'
+          color: 'text-blue-700',
+          bg: 'bg-blue-50',
+          border: 'border-blue-200',
+          icon: <Info className="w-5 h-5 text-blue-600" />,
+          label: 'LOW PRIORITY'
         };
       default:
         return {
-          color: 'text-emerald-400',
-          bg: 'bg-emerald-500/10',
-          border: 'border-emerald-500/50',
-          icon: <CheckCircle2 className="w-5 h-5 text-emerald-400" />,
-          label: 'SECURE'
+          color: 'text-green-700',
+          bg: 'bg-green-50',
+          border: 'border-green-200',
+          icon: <CheckCircle2 className="w-5 h-5 text-green-600" />,
+          label: 'NO HAZARD DETECTED'
         };
     }
   };
 
   const handleGenerateLetter = async () => {
     setIsGenerating(true);
-    addLog('REPORT_GENERATION', 'Generating formal complaint letter via AI...', 'INFO');
+    addLog('REPORT_GENERATION', 'Generating official complaint letter...', 'INFO');
     try {
       const summary = riskResult?.analytics_summary || "Historical data unavailable.";
       const [generatedText, authorityData] = await Promise.all([
-         generateComplaintLetter(result, summary),
+         generateComplaintLetter(result, summary, language),
          findRelevantAuthority(result.location)
       ]);
       setLetter(generatedText);
       setAuthority(authorityData);
-      addLog('REPORT_READY', `Letter drafted for: ${authorityData.name}`, 'SUCCESS');
+      addLog('REPORT_READY', `Drafted for: ${authorityData.name}`, 'SUCCESS');
     } catch (error) {
       console.error(error);
-      addLog('REPORT_FAILED', 'Failed to generate letter or find authority.', 'ERROR');
+      addLog('REPORT_FAILED', 'Failed to generate letter.', 'ERROR');
     } finally {
       setIsGenerating(false);
     }
@@ -159,38 +180,21 @@ export const ResultCard: React.FC<ResultCardProps> = ({ result, riskResult, onRe
 
   const openMailLink = (provider: MailProvider) => {
     if (!letter || !authority) return;
-
     const email = authority.email;
-    const subject = `URGENT: Road Hazard Report - ${result.location}`;
+    const subject = `Urgent: Infrastructure Report - ${result.location}`;
     const body = letter;
-
     const encode = encodeURIComponent;
-
     let url = "";
 
     switch (provider) {
-        case 'GMAIL':
-            url = `https://mail.google.com/mail/?view=cm&fs=1&to=${encode(email)}&su=${encode(subject)}&body=${encode(body)}`;
-            break;
-        case 'OUTLOOK':
-            url = `https://outlook.live.com/owa/?path=/mail/action/compose&to=${encode(email)}&subject=${encode(subject)}&body=${encode(body)}`;
-            break;
-        case 'YAHOO':
-            url = `https://compose.mail.yahoo.com/?to=${encode(email)}&subject=${encode(subject)}&body=${encode(body)}`;
-            break;
-        case 'DEFAULT':
-            url = `mailto:${email}?subject=${encode(subject)}&body=${encode(body)}`;
-            break;
+        case 'GMAIL': url = `https://mail.google.com/mail/?view=cm&fs=1&to=${encode(email)}&su=${encode(subject)}&body=${encode(body)}`; break;
+        case 'OUTLOOK': url = `https://outlook.live.com/owa/?path=/mail/action/compose&to=${encode(email)}&subject=${encode(subject)}&body=${encode(body)}`; break;
+        case 'YAHOO': url = `https://compose.mail.yahoo.com/?to=${encode(email)}&subject=${encode(subject)}&body=${encode(body)}`; break;
+        case 'DEFAULT': url = `mailto:${email}?subject=${encode(subject)}&body=${encode(body)}`; break;
     }
-
     addLog('TRANSMISSION_INITIATED', `Opening mail client: ${provider}`, 'INFO');
-    
-    if (provider === 'DEFAULT') {
-        window.location.href = url;
-    } else {
-        window.open(url, '_blank', 'noopener,noreferrer');
-    }
-    
+    if (provider === 'DEFAULT') window.location.href = url;
+    else window.open(url, '_blank', 'noopener,noreferrer');
     setShowMailModal(false);
   };
 
@@ -202,105 +206,305 @@ export const ResultCard: React.FC<ResultCardProps> = ({ result, riskResult, onRe
 
   const config = getSeverityConfig(result.severity_score);
   const isSafe = result.severity_score === 'N/A';
-  const hasInferredLocation = result.inferred_location && 
-    (result.inferred_location.city_or_landmark !== "N/A" || result.inferred_location.street_name_or_clue !== "N/A");
+
+  // Fixed mapping for tabs
+  const tabs = [
+    { id: 'overview' as Tab, label: t('tab_overview') },
+    { id: 'intelligence' as Tab, label: t('tab_analysis') },
+    { id: 'protocol' as Tab, label: t('tab_action') }
+  ];
 
   return (
-    <div className="h-full flex flex-col bg-[#0B1120] border border-slate-700/50 rounded-xl overflow-hidden relative shadow-2xl ring-1 ring-white/5">
+    <div className="h-full flex flex-col bg-white border border-slate-200 rounded-lg overflow-hidden relative shadow-lg">
       
       {/* Mail Selection Modal */}
       {showMailModal && (
-        <div className="absolute inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in zoom-in-95 duration-200">
-            <div className="w-full max-w-sm bg-slate-900 border border-slate-700 rounded-xl p-6 shadow-2xl relative">
+        <div className="absolute inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in zoom-in-95 duration-200">
+            <div className="w-full max-w-sm bg-white border border-slate-200 rounded-xl p-6 shadow-2xl relative">
                 <button 
                     onClick={() => setShowMailModal(false)}
-                    className="absolute top-4 right-4 text-slate-500 hover:text-white transition-colors"
+                    className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 transition-colors"
                 >
                     <X className="w-5 h-5" />
                 </button>
-                
                 <div className="mb-6 text-center">
-                    <div className="w-12 h-12 bg-cyan-900/30 rounded-full flex items-center justify-center mx-auto mb-3 border border-cyan-500/30">
-                        <Mail className="w-6 h-6 text-cyan-400" />
-                    </div>
-                    <h3 className="text-lg font-bold text-white mb-1">Select Gateway</h3>
-                    <p className="text-xs text-slate-400">Choose your preferred mail terminal</p>
+                    <h3 className="text-lg font-bold text-slate-800 mb-1">{t('select_email')}</h3>
+                    <p className="text-sm text-slate-500">{t('choose_send_method')}</p>
                 </div>
-
-                <div className="grid grid-cols-1 gap-3">
-                    <button 
-                        onClick={() => openMailLink('GMAIL')}
-                        className="flex items-center gap-3 w-full p-3 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-red-500/50 transition-all group"
-                    >
-                        <div className="w-8 h-8 flex items-center justify-center rounded bg-white text-red-600 font-bold text-lg group-hover:scale-110 transition-transform">M</div>
-                        <div className="text-left">
-                            <div className="text-sm font-bold text-slate-200 group-hover:text-white">Gmail</div>
-                            <div className="text-[10px] text-slate-500">Google Workspace</div>
-                        </div>
+                <div className="space-y-3">
+                    <button onClick={() => openMailLink('GMAIL')} className="w-full p-3 rounded-lg border border-slate-200 hover:bg-slate-50 flex items-center gap-3 transition-colors text-slate-700 font-medium text-sm group">
+                        <div className="w-8 h-8 rounded bg-white border border-slate-200 flex items-center justify-center text-red-600 font-bold group-hover:scale-110 transition-transform">M</div> 
+                        <span className="font-bold">Gmail</span>
                     </button>
-
-                    <button 
-                        onClick={() => openMailLink('OUTLOOK')}
-                        className="flex items-center gap-3 w-full p-3 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-blue-500/50 transition-all group"
-                    >
-                        <div className="w-8 h-8 flex items-center justify-center rounded bg-[#0078D4] text-white font-bold text-lg group-hover:scale-110 transition-transform">O</div>
-                        <div className="text-left">
-                            <div className="text-sm font-bold text-slate-200 group-hover:text-white">Outlook</div>
-                            <div className="text-[10px] text-slate-500">Microsoft Office 365</div>
-                        </div>
+                    <button onClick={() => openMailLink('OUTLOOK')} className="w-full p-3 rounded-lg border border-slate-200 hover:bg-slate-50 flex items-center gap-3 transition-colors text-slate-700 font-medium text-sm group">
+                        <div className="w-8 h-8 rounded bg-[#0078D4] text-white flex items-center justify-center font-bold group-hover:scale-110 transition-transform">O</div>
+                        <span className="font-bold">Outlook</span>
                     </button>
-
-                    <button 
-                        onClick={() => openMailLink('YAHOO')}
-                        className="flex items-center gap-3 w-full p-3 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-purple-500/50 transition-all group"
-                    >
-                        <div className="w-8 h-8 flex items-center justify-center rounded bg-[#6001D2] text-white font-bold text-lg group-hover:scale-110 transition-transform">Y!</div>
-                        <div className="text-left">
-                            <div className="text-sm font-bold text-slate-200 group-hover:text-white">Yahoo Mail</div>
-                            <div className="text-[10px] text-slate-500">Yahoo Service</div>
-                        </div>
+                    <button onClick={() => openMailLink('YAHOO')} className="w-full p-3 rounded-lg border border-slate-200 hover:bg-slate-50 flex items-center gap-3 transition-colors text-slate-700 font-medium text-sm group">
+                        <div className="w-8 h-8 rounded bg-[#6001D2] text-white flex items-center justify-center font-bold group-hover:scale-110 transition-transform">Y!</div>
+                        <span className="font-bold">Yahoo</span>
                     </button>
-
-                    <div className="relative my-2">
-                        <div className="absolute inset-0 flex items-center">
-                            <div className="w-full border-t border-slate-700"></div>
-                        </div>
-                        <div className="relative flex justify-center text-xs uppercase">
-                            <span className="bg-slate-900 px-2 text-slate-600 font-mono">Or</span>
-                        </div>
+                    <div className="border-t border-slate-200 my-2 pt-2">
+                        <button onClick={() => openMailLink('DEFAULT')} className="w-full p-2 text-center text-xs text-slate-500 hover:text-india-navy font-semibold uppercase">{t('use_default_app')}</button>
                     </div>
-
-                    <button 
-                        onClick={() => openMailLink('DEFAULT')}
-                        className="flex items-center justify-center gap-2 w-full p-3 rounded-lg border border-slate-700 text-slate-400 hover:text-white hover:bg-slate-800 transition-all text-xs font-mono uppercase tracking-wider"
-                    >
-                        Use System Default
-                    </button>
                 </div>
             </div>
         </div>
       )}
 
       {/* Header Status Bar */}
-      <div className="p-5 border-b border-slate-800 bg-[#020617]/50 backdrop-blur-sm flex justify-between items-center">
-        <div className="flex items-center gap-3">
-          <div className={`p-2 rounded-lg ${config.bg} border border-white/5`}>
+      <div className={`p-6 border-b border-slate-200 ${config.bg} flex justify-between items-center`}>
+        <div className="flex items-center gap-4">
+          <div className={`p-2 rounded-full bg-white border ${config.border} shadow-sm`}>
             {config.icon}
           </div>
           <div>
-            <h3 className="text-sm font-bold text-white tracking-wide uppercase">Analysis Complete</h3>
-            <div className={`text-[10px] font-mono font-bold ${config.color} tracking-widest mt-0.5`}>
-              STATUS: {config.label}
+            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wide">{t('inspection_status')}</h3>
+            <div className={`text-xs font-bold ${config.color} mt-0.5`}>
+              {config.label}
             </div>
           </div>
         </div>
         <div className="text-right hidden sm:block">
-           <div className="text-[10px] text-slate-500 font-mono uppercase">Reference ID</div>
-           <div className="text-xs font-mono text-slate-300">#RG-{Math.floor(Math.random()*10000)}</div>
+           <div className="text-xs text-slate-500 font-medium">{t('report_ref')}</div>
+           <div className="text-sm font-bold text-slate-700">RG-{Math.floor(Math.random()*10000)}</div>
         </div>
       </div>
 
-      {/* Tabs Navigation */}
-      <div className="flex border-b border-slate-800 bg-slate-900/30">
-        <button 
-          onClick={() => setActiveTab('overview')}
+      {/* Tabs */}
+      <div className="flex border-b border-slate-200 bg-slate-50">
+        {tabs.map((tab) => (
+            <button 
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            disabled={tab.id === 'protocol' && isSafe}
+            className={`flex-1 py-3 text-sm font-bold transition-colors border-b-2 
+                ${activeTab === tab.id ? 'border-india-navy text-india-navy bg-white' : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-100'}
+                ${(tab.id === 'protocol' && isSafe) ? 'opacity-50 cursor-not-allowed' : ''}
+            `}
+            >
+            {tab.label}
+            </button>
+        ))}
+      </div>
+
+      {/* Body */}
+      <div className="flex-grow p-6 overflow-y-auto bg-white">
+        
+        {/* OVERVIEW */}
+        {activeTab === 'overview' && (
+          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+             
+             <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                <div className="text-xs text-slate-500 uppercase font-bold mb-2">{t('issue_identified')}</div>
+                <div className="text-lg text-slate-900 font-bold mb-2">{result.hazard_detected}</div>
+                <div className="text-sm text-slate-600 leading-relaxed">
+                  {result.description}
+                </div>
+             </div>
+
+             <div className="space-y-3">
+                <div className="flex justify-between items-end">
+                    <div className="text-xs text-slate-500 font-bold uppercase flex items-center gap-2">
+                        <MapPin className="w-4 h-4" /> {t('location_details')}
+                    </div>
+                    {result.location && (
+                       <button onClick={handleGoogleMaps} className="flex items-center gap-1 text-india-navy hover:text-blue-700 text-xs font-bold">
+                           <ExternalLink className="w-3 h-3" /> {t('view_maps')}
+                       </button>
+                   )}
+                </div>
+                
+                <div className="border border-slate-200 rounded-lg overflow-hidden">
+                    <div className="p-4 bg-slate-50 border-b border-slate-200">
+                        <div className="text-sm font-medium text-slate-800">{result.location}</div>
+                        {result.inferred_location && (
+                             <div className="mt-2 flex items-start gap-2 text-xs text-slate-500 bg-white p-2 rounded border border-slate-200">
+                                <LocateFixed className="w-3 h-3 mt-0.5 text-india-navy" />
+                                <div>
+                                    <span className="font-semibold text-india-navy">{t('ai_cross_reference')}:</span> {result.inferred_location.city_or_landmark} ({result.inferred_location.confidence_level} Confidence)
+                                </div>
+                             </div>
+                        )}
+                    </div>
+                    {/* Visual Map */}
+                    <div className="w-full h-48 bg-slate-100 relative">
+                        <div ref={mapContainerRef} className="absolute inset-0 z-0"></div>
+                    </div>
+                </div>
+             </div>
+             
+             {!isSafe && (
+               <button 
+                  onClick={() => setActiveTab('protocol')}
+                  className="w-full py-3 rounded bg-india-navy hover:bg-blue-800 text-white font-bold text-sm shadow-md transition-all flex items-center justify-center gap-2"
+               >
+                  {t('proceed_action')} <ArrowRight className="w-4 h-4" />
+               </button>
+             )}
+          </div>
+        )}
+
+        {/* ANALYSIS (VISUAL CHARTS) */}
+        {activeTab === 'intelligence' && riskResult && (
+           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                 <div className="flex items-center gap-2 text-india-navy mb-3">
+                    <BarChart3 className="w-4 h-4" />
+                    <span className="text-xs font-bold uppercase">{t('data_insights')}</span>
+                 </div>
+                 <p className="text-sm text-slate-600 leading-relaxed">
+                   {riskResult.analytics_summary}
+                 </p>
+              </div>
+
+              {/* Data Visualization Grid */}
+              <div className="grid grid-cols-2 gap-4">
+                 
+                 {/* Chart: Risk Breakdown */}
+                 <div className="col-span-2 p-5 border border-slate-200 rounded-lg bg-white shadow-sm">
+                    <div className="text-xs text-slate-500 font-bold uppercase flex items-center gap-2 mb-4">
+                       <PieChart className="w-3 h-3" /> Historical Accident Risk Distribution
+                    </div>
+                    <div className="space-y-3">
+                       {riskResult.risk_breakdown?.map((item, idx) => (
+                           <div key={idx} className="flex items-center gap-3">
+                              <div className="w-20 text-[10px] font-bold text-slate-500 text-right">{item.risk_level}</div>
+                              <div className="flex-grow h-3 bg-slate-100 rounded-full overflow-hidden">
+                                 <div 
+                                    className={`h-full rounded-full transition-all duration-1000 ease-out ${
+                                        item.risk_level === 'CRITICAL' ? 'bg-red-600' : 
+                                        item.risk_level === 'HIGH' ? 'bg-orange-500' :
+                                        item.risk_level === 'MEDIUM' ? 'bg-yellow-500' : 'bg-blue-400'
+                                    }`} 
+                                    style={{width: `${item.percentage}%`}}
+                                 ></div>
+                              </div>
+                              <div className="w-8 text-[10px] font-bold text-slate-700">{item.percentage}%</div>
+                           </div>
+                       ))}
+                    </div>
+                 </div>
+
+                 <div className="p-4 border border-slate-200 rounded-lg">
+                    <div className="text-xs text-slate-500 font-bold uppercase flex items-center gap-2 mb-2">
+                       <TrendingUp className="w-3 h-3" /> {t('leading_cause')}
+                    </div>
+                    <div className="text-base font-bold text-slate-800">{riskResult.most_common_cause}</div>
+                 </div>
+
+                 <div className="p-4 border border-slate-200 rounded-lg flex flex-col justify-between">
+                    <div className="text-xs text-slate-500 font-bold uppercase flex items-center gap-2 mb-3">
+                       <Clock className="w-3 h-3" /> {t('time_analysis')}
+                    </div>
+                    <div className="flex items-center gap-1 h-full max-h-[100px] w-full">
+                        {/* Day Bar */}
+                        <div className="flex-1 flex flex-col justify-end items-center gap-1 h-full">
+                            <div className="text-[10px] font-bold text-orange-600">{riskResult.time_analysis.day_percentage}%</div>
+                            <div className="w-full bg-orange-200 rounded-t-sm relative group overflow-hidden" style={{height: `${Math.max(10, riskResult.time_analysis.day_percentage)}%`}}>
+                                <div className="absolute inset-0 bg-orange-400 opacity-80"></div>
+                            </div>
+                            <div className="text-[9px] font-bold uppercase text-slate-400">{t('day')}</div>
+                        </div>
+                        {/* Night Bar */}
+                        <div className="flex-1 flex flex-col justify-end items-center gap-1 h-full">
+                            <div className="text-[10px] font-bold text-india-navy">{riskResult.time_analysis.night_percentage}%</div>
+                            <div className="w-full bg-blue-200 rounded-t-sm relative group overflow-hidden" style={{height: `${Math.max(10, riskResult.time_analysis.night_percentage)}%`}}>
+                                <div className="absolute inset-0 bg-india-navy opacity-80"></div>
+                            </div>
+                            <div className="text-[9px] font-bold uppercase text-slate-400">{t('night')}</div>
+                        </div>
+                    </div>
+                 </div>
+
+                 <div className="col-span-2 p-4 border border-slate-200 rounded-lg bg-red-50/50">
+                    <div className="text-xs text-red-700 font-bold uppercase flex items-center gap-2 mb-3">
+                       <AlertCircle className="w-3 h-3" /> {t('high_risk_zones')}
+                    </div>
+                    <div className="space-y-2">
+                       {riskResult.top_hotspots.map((spot, i) => (
+                          <div key={i} className="flex items-center gap-2 text-sm text-slate-700">
+                             <span className="w-1.5 h-1.5 bg-red-500 rounded-full"></span> {spot}
+                          </div>
+                       ))}
+                    </div>
+                 </div>
+              </div>
+           </div>
+        )}
+
+        {/* ACTION (PROTOCOL) */}
+        {activeTab === 'protocol' && (
+           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+              {!letter ? (
+                 <div className="text-center py-8 space-y-4">
+                    <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto text-india-navy">
+                       <FileCheck className="w-8 h-8" />
+                    </div>
+                    <div>
+                       <h3 className="text-slate-900 font-bold">{t('generate_complaint')}</h3>
+                       <p className="text-sm text-slate-500 mt-1 max-w-xs mx-auto">
+                         {t('draft_instruction')}
+                       </p>
+                    </div>
+                    <button 
+                      onClick={handleGenerateLetter}
+                      disabled={isGenerating}
+                      className="mt-2 px-6 py-2 bg-india-navy hover:bg-blue-800 text-white font-bold rounded shadow-sm transition-all disabled:opacity-50 flex items-center gap-2 mx-auto text-sm"
+                    >
+                      {isGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
+                      {isGenerating ? t('drafting') : t('draft_button')}
+                    </button>
+                 </div>
+              ) : (
+                 <div className="space-y-6">
+                    {authority && (
+                      <div className="bg-slate-50 border border-slate-200 rounded-lg p-5">
+                          <div className="flex items-center gap-2 mb-3">
+                             <Building2 className="w-5 h-5 text-india-navy" />
+                             <h4 className="font-bold text-slate-800">{authority.name}</h4>
+                          </div>
+                          <div className="text-sm text-slate-600 ml-7 mb-4">{authority.address}</div>
+                          <div className="grid grid-cols-2 gap-4 ml-7">
+                             <div className="flex items-center gap-2 text-xs text-slate-500">
+                                <Phone className="w-3.5 h-3.5" /> {authority.phone}
+                             </div>
+                             <div className="flex items-center gap-2 text-xs text-slate-500 truncate">
+                                <Mail className="w-3.5 h-3.5" /> {authority.email}
+                             </div>
+                          </div>
+                      </div>
+                    )}
+
+                    <div className="relative">
+                       <div className="flex items-center justify-between mb-2">
+                          <div className="text-xs font-bold text-slate-500 uppercase flex items-center gap-2">
+                             <FileText className="w-3 h-3" /> AI Protocol Output
+                          </div>
+                          <button onClick={() => {navigator.clipboard.writeText(letter); alert(t('copied'));}} className="text-xs text-india-navy font-bold flex items-center gap-1 hover:underline">
+                             <Copy className="w-3 h-3" /> {t('copy_text')}
+                          </button>
+                       </div>
+                       <div className="bg-white border border-slate-300 rounded-lg p-5 h-64 overflow-y-auto text-sm text-slate-800 leading-relaxed font-mono whitespace-pre-wrap shadow-inner relative">
+                          <div className="absolute top-2 right-2 px-2 py-0.5 bg-slate-100 text-[9px] text-slate-400 font-bold rounded">JSON_FORMAT_READY</div>
+                          {letter}
+                       </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-3">
+                        <button 
+                          onClick={() => setShowMailModal(true)}
+                          className="w-full py-3 bg-india-green hover:bg-green-700 text-white font-bold rounded shadow-md transition-all flex items-center justify-center gap-2 text-sm uppercase tracking-wide"
+                        >
+                           <Send className="w-4 h-4" /> {t('send_complaint')}
+                        </button>
+                    </div>
+                 </div>
+              )}
+           </div>
+        )}
+
+      </div>
+    </div>
+  );
+};

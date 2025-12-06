@@ -263,15 +263,19 @@ export const findRelevantAuthority = async (location: string): Promise<Authority
   }
 };
 
-export const generateComplaintLetter = async (hazardData: AnalysisResult, analyticsSummary: string): Promise<string> => {
+export const generateComplaintLetter = async (hazardData: AnalysisResult, analyticsSummary: string, language: string = 'en'): Promise<string> => {
   const apiKey = process.env.API_KEY;
   if (!apiKey) {
     throw new Error("API Key not found");
   }
   const ai = new GoogleGenAI({ apiKey });
 
+  const langName = language === 'hi' ? 'Hindi' : language === 'ta' ? 'Tamil' : language === 'te' ? 'Telugu' : 'English';
+
   const prompt = `
 You are an AI reporting tool (Vision & Reporting Lead). Your task is to draft a formal, urgent, and respectful complaint letter on behalf of a concerned citizen to the Municipal Commissioner.
+
+**Output Language Requirement:** The letter MUST be written entirely in **${langName}**.
 
 Use the following information:
 1. Visual Hazard Details: ${JSON.stringify(hazardData)}
@@ -281,14 +285,14 @@ Use the following information:
 4. Target Recipient: The Municipal Commissioner.
 
 Letter Requirements:
-- Subject Line: Must be Clear and Urgent (e.g., "URGENT REPAIR REQUIRED: [Hazard Type] at [Location]").
+- Subject Line: Must be Clear and Urgent.
 - Body:
     - **Introduction**: Briefly state the immediate infrastructure issue observed at the specified location.
     - **Data Context**: Use the provided Analytics Context to explain WHY this is a high-priority risk (mention hotspots, causes, or severity trends).
     - **Call to Action**: Request immediate scheduling of repair work.
 - Output: The full text of the letter, starting with the Subject Line. Do not include any salutations (Dear Commissioner) or sign-offs (Sincerely) to make it cleaner for a digital email format.
 
-Draft the letter now.
+Draft the letter now in ${langName}.
 `;
 
   try {
