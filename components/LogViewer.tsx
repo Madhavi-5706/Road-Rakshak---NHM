@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { X, FileText, Trash2, Clock, CheckCircle2, AlertCircle, Info } from 'lucide-react';
+import { X, FileText, Trash2, Clock, CheckCircle2, AlertCircle, Info, Download } from 'lucide-react';
 import { ActivityLog } from '../types';
-import { getLogs, clearLogs } from '../services/logService';
+import { getLogs, clearLogs, downloadLogsAsCSV } from '../services/logService';
 import { useLanguage } from '../contexts/LanguageContext';
 
 interface LogViewerProps {
@@ -24,6 +24,10 @@ export const LogViewer: React.FC<LogViewerProps> = ({ onClose, isOpen }) => {
     setLogs([]);
   };
 
+  const handleExport = () => {
+    downloadLogsAsCSV();
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -36,6 +40,14 @@ export const LogViewer: React.FC<LogViewerProps> = ({ onClose, isOpen }) => {
             <h3 className="font-bold text-sm uppercase">{t('activity_log')}</h3>
           </div>
           <div className="flex items-center gap-2">
+            <button 
+                onClick={handleExport} 
+                disabled={logs.length === 0}
+                className="p-2 text-slate-500 hover:text-india-navy hover:bg-slate-200 rounded transition-colors disabled:opacity-50" 
+                title="Export Logs as CSV"
+            >
+                <Download className="w-4 h-4" />
+            </button>
             <button onClick={handleClear} className="p-2 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded transition-colors" title="Clear Logs">
                 <Trash2 className="w-4 h-4" />
             </button>

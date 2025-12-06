@@ -22,7 +22,7 @@ export const Header: React.FC<HeaderProps> = ({ onShowLogs, onStartTour, userId 
   ];
 
   return (
-    <header className="bg-white/90 backdrop-blur-md sticky top-0 z-50 h-16 shadow-lg border-b border-slate-200/60">
+    <header className="bg-white/90 backdrop-blur-md sticky top-0 z-50 shadow-lg border-b border-slate-200/60 pt-[env(safe-area-inset-top)] transition-all">
       {/* Tricolor Strip */}
       <div className="h-1 w-full flex">
         <div className="h-full w-1/3 bg-[#FF9933]"></div>
@@ -30,7 +30,7 @@ export const Header: React.FC<HeaderProps> = ({ onShowLogs, onStartTour, userId 
         <div className="h-full w-1/3 bg-[#138808]"></div>
       </div>
 
-      <div className="container mx-auto px-4 h-full flex items-center justify-between py-2">
+      <div className="container mx-auto px-4 h-16 flex items-center justify-between py-2">
         
         {/* Brand */}
         <div className="flex items-center gap-3 group cursor-pointer">

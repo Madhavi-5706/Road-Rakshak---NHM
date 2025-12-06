@@ -70,3 +70,29 @@ export const clearLogs = () => {
   memoryChain = [];
   localStorage.removeItem(STORAGE_KEY);
 };
+
+export const downloadLogsAsCSV = () => {
+  if (memoryChain.length === 0) return;
+
+  const headers = ['Timestamp', 'Log ID', 'Action', 'Status', 'User ID', 'Details', 'Block Hash'];
+  const rows = memoryChain.map(log => [
+    new Date(log.timestamp).toISOString(),
+    log.id,
+    log.action,
+    log.status,
+    log.signature.replace('SIGNED_BY_', ''),
+    `"${log.details.replace(/"/g, '""')}"`, // Escape quotes for CSV
+    log.hash
+  ]);
+  
+  const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', `roadguard_audit_log_${new Date().toISOString().slice(0,10)}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+};
