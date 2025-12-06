@@ -38,8 +38,9 @@ export const Header: React.FC<HeaderProps> = ({ onShowLogs, onStartTour, userId 
              <Shield className="w-6 h-6" />
           </div>
           <div className="flex flex-col">
-            <h1 className="text-xl font-bold text-india-navy tracking-tight leading-none">
+            <h1 className="text-xl font-bold text-india-navy tracking-tight leading-none flex items-center gap-2">
               {t('app_name')}
+              <span className="text-[9px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded border border-slate-200">v1.0</span>
             </h1>
             <span className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider leading-none mt-1 flex items-center gap-1">
               <Lock className="w-3 h-3 text-green-600" /> {t('subtitle')}
