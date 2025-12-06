@@ -1,0 +1,8 @@
+{
+  "name": "RoadGuard AI Auditor",
+  "description": "An AI-powered infrastructure safety audit tool. Upload road images to detect hazards like potholes, broken lights, and waterlogging instantly.",
+  "requestFramePermissions": [
+    "camera",
+    "geolocation"
+  ]
+}
