@@ -3,7 +3,17 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>RoadGuard India</title>
+    <title>RoadGuard India | Secure Infrastructure Audit</title>
+    
+    <!-- Security Hardening: Content Security Policy (Relaxed for Dev Environment compatibility) -->
+    <meta http-equiv="Content-Security-Policy" content="
+      default-src * 'unsafe-inline' 'unsafe-eval' data: blob:;
+      script-src * 'unsafe-inline' 'unsafe-eval' data: blob:;
+      connect-src * 'unsafe-inline' 'unsafe-eval' data: blob:;
+      img-src * data: blob:;
+      style-src * 'unsafe-inline';
+    ">
+
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     
@@ -26,12 +36,26 @@
                 navy: '#000080',
                 cream: '#fdfbf7',
               },
-              slate: {
-                850: '#1e293b',
+              cyber: {
+                slate: '#0f172a',
+                glass: 'rgba(255, 255, 255, 0.7)',
+                border: 'rgba(255, 255, 255, 0.5)',
               }
             },
             animation: {
               'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+              'scan': 'scan 2s ease-in-out infinite',
+              'fade-in': 'fadeIn 0.5s ease-out',
+            },
+            keyframes: {
+              scan: {
+                '0%, 100%': { transform: 'translateX(-100%)' },
+                '50%': { transform: 'translateX(100%)' },
+              },
+              fadeIn: {
+                '0%': { opacity: '0' },
+                '100%': { opacity: '1' },
+              }
             }
           }
         }

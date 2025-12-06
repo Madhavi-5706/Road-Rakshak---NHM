@@ -7,13 +7,18 @@ import { ImageAnnotator } from './components/ImageAnnotator';
 import { LogViewer } from './components/LogViewer';
 import { OnboardingTour } from './components/OnboardingTour';
 import { LanguageSelectorModal } from './components/LanguageSelectorModal';
+import { AuthOverlay } from './components/AuthOverlay';
 import { analyzeRoadImage, analyzeRiskProfile } from './services/geminiService';
 import { addLog } from './services/logService';
+import { sanitizeInput } from './services/securityService';
 import { AnalysisResult, RiskAnalysisResult } from './types';
-import { AlertCircle, FileText } from 'lucide-react';
+import { AlertCircle } from 'lucide-react';
 import { useLanguage } from './contexts/LanguageContext';
 
 const App: React.FC = () => {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [userId, setUserId] = useState<string>('');
+
   const [image, setImage] = useState<string | null>(null);
   const [annotatedImage, setAnnotatedImage] = useState<string | null>(null);
   const [location, setLocation] = useState<string>("");
@@ -29,15 +34,16 @@ const App: React.FC = () => {
   const { t } = useLanguage();
 
   useEffect(() => {
-    // Check if language has ever been selected
-    const savedLang = localStorage.getItem('roadguard_language');
-    if (!savedLang) {
-      setShowLanguageSelector(true);
-    } else {
-      // If language exists, check if tour has been seen
-      checkTourStatus();
+    // Only check onboarding if authenticated
+    if (isAuthenticated) {
+      const savedLang = localStorage.getItem('roadguard_language');
+      if (!savedLang) {
+        setShowLanguageSelector(true);
+      } else {
+        checkTourStatus();
+      }
     }
-  }, []);
+  }, [isAuthenticated]);
 
   const checkTourStatus = () => {
     const hasSeenTour = localStorage.getItem('roadguard_has_seen_tour');
@@ -46,16 +52,21 @@ const App: React.FC = () => {
     }
   };
 
+  const handleAuthComplete = (did: string) => {
+    setUserId(did);
+    setIsAuthenticated(true);
+    addLog('SESSION_START', 'User authenticated via decentralized ID', 'SUCCESS', did);
+  };
+
   const handleLanguageSelectionComplete = () => {
     setShowLanguageSelector(false);
-    // After language selection, show tour immediately
     setShowTour(true);
   };
 
   const handleTourComplete = () => {
     setShowTour(false);
     localStorage.setItem('roadguard_has_seen_tour', 'true');
-    addLog('TOUR_COMPLETE', 'User completed the onboarding tour', 'INFO');
+    addLog('TOUR_COMPLETE', 'User completed the onboarding tour', 'INFO', userId);
   };
 
   const handleStartTour = () => {
@@ -68,7 +79,7 @@ const App: React.FC = () => {
     setRiskResult(null);
     setLocation("");
     
-    addLog('IMAGE_UPLOAD', `Image selected: ${file.name} (${(file.size/1024).toFixed(1)} KB)`, 'INFO');
+    addLog('IMAGE_UPLOAD', `Image selected: ${file.name} (${(file.size/1024).toFixed(1)} KB)`, 'INFO', userId);
 
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -80,16 +91,17 @@ const App: React.FC = () => {
   };
 
   const handleAnnotationConfirm = async (finalImage: string, loc: string) => {
+    const cleanLoc = sanitizeInput(loc); // Security: Sanitize input
     setAnnotatedImage(finalImage);
-    setLocation(loc);
+    setLocation(cleanLoc);
     setStep('analyzing');
-    addLog('ANNOTATION_CONFIRMED', `Location verified: ${loc}`, 'INFO');
-    await performAnalysis(finalImage, loc);
+    addLog('ANNOTATION_CONFIRMED', `Location verified: ${cleanLoc}`, 'INFO', userId);
+    await performAnalysis(finalImage, cleanLoc);
   };
 
   const performAnalysis = async (base64Image: string, loc: string) => {
     try {
-      addLog('ANALYSIS_START', 'Initiating infrastructure analysis protocol.', 'INFO');
+      addLog('ANALYSIS_START', 'Initiating infrastructure analysis protocol.', 'INFO', userId);
       const base64Content = base64Image.split(',')[1];
       const mimeType = base64Image.substring(base64Image.indexOf(':') + 1, base64Image.indexOf(';'));
       
@@ -102,12 +114,12 @@ const App: React.FC = () => {
       setRiskResult(riskData);
       setStep('result');
       
-      addLog('ANALYSIS_COMPLETE', `Report Generated: ${analysisData.hazard_detected} (Severity: ${analysisData.severity_score})`, 'SUCCESS');
+      addLog('ANALYSIS_COMPLETE', `Report Generated: ${analysisData.hazard_detected} (Severity: ${analysisData.severity_score})`, 'SUCCESS', userId);
     } catch (err: any) {
       console.error(err);
       setError("Analysis Failed. Please verify network connection and try again.");
       setStep('result');
-      addLog('ANALYSIS_FAILED', err.message || 'Unknown error occurred', 'ERROR');
+      addLog('ANALYSIS_FAILED', err.message || 'Unknown error occurred', 'ERROR', userId);
     }
   };
 
@@ -119,15 +131,19 @@ const App: React.FC = () => {
     setError(null);
     setLocation("");
     setStep('upload');
-    addLog('SYSTEM_RESET', 'New audit session started.', 'INFO');
+    addLog('SYSTEM_RESET', 'New audit session started.', 'INFO', userId);
   };
+
+  if (!isAuthenticated) {
+    return <AuthOverlay onAuthenticated={handleAuthComplete} />;
+  }
 
   return (
     <div className="flex-grow flex flex-col bg-slate-50 text-slate-800 relative overflow-hidden font-sans min-h-screen">
       
       {showLanguageSelector && <LanguageSelectorModal onComplete={handleLanguageSelectionComplete} />}
       
-      <Header onShowLogs={() => setShowLogs(true)} onStartTour={handleStartTour} />
+      <Header onShowLogs={() => setShowLogs(true)} onStartTour={handleStartTour} userId={userId} />
 
       {!showLanguageSelector && showTour && <OnboardingTour onComplete={handleTourComplete} onSkip={handleTourComplete} />}
       <LogViewer isOpen={showLogs} onClose={() => setShowLogs(false)} />
@@ -243,7 +259,7 @@ const App: React.FC = () => {
                   </button>
                 </div>
               ) : step === 'result' && result ? (
-                 <ResultCard result={result} riskResult={riskResult} onReset={handleReset} />
+                 <ResultCard result={result} riskResult={riskResult} onReset={handleReset} userId={userId} />
               ) : (
                  <LoadingOverlay />
               )}

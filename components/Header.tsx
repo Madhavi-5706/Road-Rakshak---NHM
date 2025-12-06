@@ -1,13 +1,14 @@
 import React from 'react';
-import { Shield, Activity, History, MapPin, Languages, HelpCircle } from 'lucide-react';
+import { Shield, Activity, History, MapPin, Languages, HelpCircle, Lock } from 'lucide-react';
 import { useLanguage, Language } from '../contexts/LanguageContext';
 
 interface HeaderProps {
   onShowLogs: () => void;
   onStartTour: () => void;
+  userId?: string;
 }
 
-export const Header: React.FC<HeaderProps> = ({ onShowLogs, onStartTour }) => {
+export const Header: React.FC<HeaderProps> = ({ onShowLogs, onStartTour, userId }) => {
   const { language, setLanguage, t } = useLanguage();
 
   const languageOptions: { id: Language; label: string }[] = [
@@ -21,7 +22,7 @@ export const Header: React.FC<HeaderProps> = ({ onShowLogs, onStartTour }) => {
   ];
 
   return (
-    <header className="bg-white sticky top-0 z-50 h-16 shadow-md border-b border-slate-200">
+    <header className="bg-white/90 backdrop-blur-md sticky top-0 z-50 h-16 shadow-lg border-b border-slate-200/60">
       {/* Tricolor Strip */}
       <div className="h-1 w-full flex">
         <div className="h-full w-1/3 bg-[#FF9933]"></div>
@@ -33,30 +34,29 @@ export const Header: React.FC<HeaderProps> = ({ onShowLogs, onStartTour }) => {
         
         {/* Brand */}
         <div className="flex items-center gap-3 group cursor-pointer">
-          <div className="w-10 h-10 flex items-center justify-center bg-india-navy rounded text-white shadow-sm">
+          <div className="w-10 h-10 flex items-center justify-center bg-india-navy rounded-lg text-white shadow-lg shadow-blue-900/20">
              <Shield className="w-6 h-6" />
           </div>
           <div className="flex flex-col">
             <h1 className="text-xl font-bold text-india-navy tracking-tight leading-none">
               {t('app_name')}
             </h1>
-            <span className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider leading-none mt-1">
-              {t('subtitle')}
+            <span className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider leading-none mt-1 flex items-center gap-1">
+              <Lock className="w-3 h-3 text-green-600" /> {t('subtitle')}
             </span>
           </div>
         </div>
 
         {/* Status Indicators */}
         <div className="flex items-center gap-2 sm:gap-4">
-            <div className="hidden lg:flex items-center gap-4 text-xs font-medium text-slate-600">
-                <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 rounded-full border border-slate-200">
-                    <span className="relative flex h-2 w-2">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-india-green opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-india-green"></span>
-                    </span>
-                    <span>{t('system_active')}</span>
-                </div>
-            </div>
+            {/* Identity Badge */}
+            {userId && (
+              <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 bg-slate-900 text-slate-200 rounded-md border border-slate-700 font-mono text-[10px]">
+                  <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse"></div>
+                  <span className="opacity-70">DID:</span>
+                  <span className="font-bold text-white">{userId.substring(0, 6)}...{userId.substring(userId.length - 4)}</span>
+              </div>
+            )}
 
             {/* Language Selector */}
             <div className="relative group z-50">

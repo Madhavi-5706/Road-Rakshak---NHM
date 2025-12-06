@@ -1,5 +1,5 @@
-import React, { useCallback, useState, useRef } from 'react';
-import { Upload, Camera, Video, Loader2, Image as ImageIcon, Film } from 'lucide-react';
+import React, { useCallback, useState, useRef, useEffect } from 'react';
+import { Upload, Camera, Video, Loader2, Image as ImageIcon, Film, X, SwitchCamera, Circle } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 
 interface ImageUploaderProps {
@@ -9,12 +9,123 @@ interface ImageUploaderProps {
 export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImageSelect }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  
+  // Camera State
+  const [showCamera, setShowCamera] = useState(false);
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('environment');
+  const [cameraError, setCameraError] = useState<string | null>(null);
+
   const { t } = useLanguage();
   
-  // Refs for different input types
+  // Refs
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
+  const videoPreviewRef = useRef<HTMLVideoElement>(null);
+
+  // Stop camera stream tracks
+  const stopCamera = useCallback(() => {
+    if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
+        setCameraStream(null);
+    }
+    setShowCamera(false);
+    setCameraError(null);
+  }, [cameraStream]);
+
+  // Start camera
+  const startCamera = async (mode: 'user' | 'environment' = 'environment') => {
+    try {
+        setCameraError(null);
+        // Check if browser supports mediaDevices
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            throw new Error("Camera API not supported");
+        }
+
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+            video: { 
+                facingMode: mode,
+                width: { ideal: 1920 },
+                height: { ideal: 1080 }
+            },
+            audio: false 
+        });
+        
+        setCameraStream(stream);
+        setShowCamera(true);
+        setFacingMode(mode);
+
+    } catch (err) {
+        console.warn("In-app camera failed, falling back to native input", err);
+        // Fallback to native input
+        stopCamera();
+        cameraInputRef.current?.click();
+    }
+  };
+
+  // Switch between front/back camera
+  const switchCameraMode = async () => {
+    if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
+    }
+    const newMode = facingMode === 'environment' ? 'user' : 'environment';
+    await startCamera(newMode);
+  };
+
+  // Capture photo from video stream
+  const capturePhoto = () => {
+    if (videoPreviewRef.current) {
+        const video = videoPreviewRef.current;
+        const canvas = document.createElement('canvas');
+        
+        // Handle dimensions to match video
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+            // Flip if user mode (mirror effect fix)
+            if (facingMode === 'user') {
+                ctx.translate(canvas.width, 0);
+                ctx.scale(-1, 1);
+            }
+
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            canvas.toBlob((blob) => {
+                if (blob) {
+                    const file = new File([blob], `capture_${Date.now()}.jpg`, { type: 'image/jpeg' });
+                    onImageSelect(file);
+                    stopCamera();
+                } else {
+                    setCameraError("Failed to capture image");
+                }
+            }, 'image/jpeg', 0.9);
+        }
+    }
+  };
+
+  const handleNativeFallback = () => {
+      stopCamera();
+      cameraInputRef.current?.click();
+  };
+
+  // Attach stream to video element when ready
+  useEffect(() => {
+    if (showCamera && videoPreviewRef.current && cameraStream) {
+        videoPreviewRef.current.srcObject = cameraStream;
+    }
+  }, [showCamera, cameraStream]);
+
+  // Clean up on unmount
+  useEffect(() => {
+    return () => {
+        if (cameraStream) {
+            cameraStream.getTracks().forEach(track => track.stop());
+        }
+    };
+  }, []);
 
   const extractFrameFromVideo = (videoFile: File): Promise<File> => {
     return new Promise((resolve, reject) => {
@@ -150,6 +261,68 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImageSelect }) =
             className="hidden"
         />
 
+        {/* Camera Modal Overlay */}
+        {showCamera && (
+            <div className="fixed inset-0 z-[100] bg-black flex flex-col animate-in fade-in duration-300">
+                <div className="absolute top-4 right-4 z-20 flex items-center gap-4">
+                     <button 
+                        onClick={handleNativeFallback} 
+                        className="hidden md:block px-3 py-1.5 rounded-full bg-black/40 text-white hover:bg-black/60 backdrop-blur-sm text-xs font-bold border border-white/20 transition-colors"
+                     >
+                        {t('use_native_camera')}
+                     </button>
+                    <button onClick={stopCamera} className="p-2 rounded-full bg-black/40 text-white hover:bg-black/60 backdrop-blur-sm">
+                        <X className="w-6 h-6" />
+                    </button>
+                </div>
+                
+                <div className="flex-grow relative flex items-center justify-center bg-black overflow-hidden">
+                    <video 
+                        ref={videoPreviewRef}
+                        autoPlay
+                        playsInline
+                        muted
+                        className={`w-full h-full object-cover ${facingMode === 'user' ? 'scale-x-[-1]' : ''}`}
+                    />
+                    {cameraError && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/80">
+                            <span className="text-white font-bold px-4 text-center">{cameraError}</span>
+                        </div>
+                    )}
+                    
+                    {/* Native fallback button (mobile position) */}
+                    <div className="absolute bottom-4 left-0 right-0 flex justify-center md:hidden">
+                        <button 
+                            onClick={handleNativeFallback} 
+                            className="px-4 py-2 rounded-full bg-black/50 text-white backdrop-blur-sm text-xs font-bold border border-white/20"
+                        >
+                            {t('use_native_camera')}
+                        </button>
+                    </div>
+                </div>
+
+                <div className="h-32 bg-black/90 flex items-center justify-around pb-6 px-8 relative z-30">
+                    <button 
+                         onClick={switchCameraMode}
+                         className="p-3 rounded-full bg-slate-800 text-white hover:bg-slate-700 active:scale-95 transition-all"
+                         aria-label="Switch Camera"
+                    >
+                        <SwitchCamera className="w-6 h-6" />
+                    </button>
+
+                    <button 
+                        onClick={capturePhoto}
+                        className="p-1 rounded-full border-4 border-white hover:border-slate-300 transition-colors active:scale-95"
+                        aria-label="Capture Photo"
+                    >
+                        <div className="w-16 h-16 rounded-full bg-white hover:bg-slate-200 transition-colors"></div>
+                    </button>
+
+                    <div className="w-12"></div> {/* Spacer for symmetry */}
+                </div>
+            </div>
+        )}
+
         {/* Main Drag & Drop Area */}
         <div 
           className={`relative group w-full h-[240px] rounded-xl transition-all duration-300 ease-out cursor-pointer overflow-hidden
@@ -204,9 +377,10 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImageSelect }) =
         <div className="grid grid-cols-2 gap-4">
             <button 
                 type="button"
-                onClick={() => cameraInputRef.current?.click()}
+                onClick={() => startCamera()}
                 disabled={isProcessing}
-                className="flex items-center justify-center gap-2 p-4 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 hover:border-india-navy transition-all shadow-sm group"
+                className="flex items-center justify-center gap-2 p-4 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 hover:border-india-navy transition-all shadow-sm group active:bg-slate-100"
+                aria-label={t('take_photo')}
             >
                 <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center group-hover:scale-110 transition-transform">
                     <Camera className="w-4 h-4" />
@@ -218,7 +392,8 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImageSelect }) =
                 type="button"
                 onClick={() => videoInputRef.current?.click()}
                 disabled={isProcessing}
-                className="flex items-center justify-center gap-2 p-4 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 hover:border-india-navy transition-all shadow-sm group"
+                className="flex items-center justify-center gap-2 p-4 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 hover:border-india-navy transition-all shadow-sm group active:bg-slate-100"
+                aria-label={t('record_video')}
             >
                 <div className="w-8 h-8 rounded-full bg-red-50 text-red-600 flex items-center justify-center group-hover:scale-110 transition-transform">
                     <Video className="w-4 h-4" />
