@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Scan, MousePointer2, Check, RefreshCw, MapPin, Undo2, Redo2, Tag, Globe } from 'lucide-react';
+import { Scan, MousePointer2, Check, RefreshCw, MapPin, Undo2, Redo2, Tag, Globe, Settings2 } from 'lucide-react';
 import { LocationPicker } from './LocationPicker';
 
 interface Annotation {
@@ -87,12 +87,11 @@ export const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ imageBase64, onC
 
     const hasAnySelection = currentAnnotations.length > 0 || currentRect !== null;
 
-    // Apply dark overlay to make selection pop (simulated night vision / tactical view)
+    // Apply dark overlay for focus
     if (hasAnySelection) {
-        ctx.fillStyle = 'rgba(2, 6, 23, 0.5)'; // Dark slate overlay
+        ctx.fillStyle = 'rgba(2, 6, 23, 0.6)'; 
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         
-        // Helper to punch holes in the overlay (reveal image below)
         const revealRect = (r: Annotation) => {
             ctx.save();
             ctx.beginPath();
@@ -102,106 +101,63 @@ export const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ imageBase64, onC
             ctx.restore();
         };
 
-        // Reveal all committed annotations
         currentAnnotations.forEach(revealRect);
-        // Reveal current drawing
         if (currentRect) revealRect(currentRect);
 
         // --- DRAW COMMITTED ANNOTATIONS ---
         currentAnnotations.forEach(rect => {
-            // Solid Border
-            ctx.strokeStyle = '#06b6d4'; // Cyan
+            // High contrast border
+            ctx.strokeStyle = '#22d3ee'; // Cyan-400
             ctx.lineWidth = 3;
             ctx.setLineDash([]);
             ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
 
-            // Normalized coordinates for consistent corner drawing
+            // Normalized coordinates
             const rx = rect.w > 0 ? rect.x : rect.x + rect.w;
             const ry = rect.h > 0 ? rect.y : rect.y + rect.h;
             const rw = Math.abs(rect.w);
             const rh = Math.abs(rect.h);
 
-            // Draw corner accents
-            const cornerSize = 16;
+            // Tactical Corners
+            const cornerSize = 10;
             ctx.strokeStyle = '#ffffff';
             ctx.lineWidth = 2;
             ctx.beginPath();
-            
-            // TL
             ctx.moveTo(rx, ry + cornerSize); ctx.lineTo(rx, ry); ctx.lineTo(rx + cornerSize, ry);
-            // TR
             ctx.moveTo(rx + rw - cornerSize, ry); ctx.lineTo(rx + rw, ry); ctx.lineTo(rx + rw, ry + cornerSize);
-            // BR
             ctx.moveTo(rx + rw, ry + rh - cornerSize); ctx.lineTo(rx + rw, ry + rh); ctx.lineTo(rx + rw - cornerSize, ry + rh);
-            // BL
             ctx.moveTo(rx + cornerSize, ry + rh); ctx.lineTo(rx, ry + rh); ctx.lineTo(rx, ry + rh - cornerSize);
-            
             ctx.stroke();
 
-            // Draw Label Tag
+            // Label Tag
             if (rect.label) {
-                ctx.font = "bold 12px 'JetBrains Mono', monospace";
+                ctx.font = "bold 14px 'JetBrains Mono', monospace";
                 const textMetrics = ctx.measureText(rect.label);
                 const textWidth = textMetrics.width;
-                const textHeight = 12;
-                const padding = 6;
+                const textHeight = 14;
+                const padding = 8;
                 
-                // Position tag above top-left
                 const tagX = rx;
                 const tagY = ry - (textHeight + padding * 2);
-                
-                // Draw tag background
-                ctx.fillStyle = '#06b6d4';
-                // If tag goes off top, move it inside
                 const drawY = tagY > 0 ? tagY : ry;
+                
+                ctx.fillStyle = '#0891b2'; // Cyan-600
                 ctx.fillRect(tagX, drawY, textWidth + padding * 2, textHeight + padding * 2);
                 
-                // Draw text
-                ctx.fillStyle = '#000000';
+                ctx.fillStyle = '#ffffff';
                 ctx.textBaseline = 'top';
                 ctx.fillText(rect.label, tagX + padding, drawY + padding);
             }
         });
 
-        // --- DRAW CURRENT RECT (Dynamic Feedback) ---
+        // --- DRAW CURRENT RECT ---
         if (currentRect) {
-            // Dashed Border
             ctx.save();
-            ctx.strokeStyle = '#22d3ee'; // Lighter cyan
+            ctx.strokeStyle = '#fbbf24'; // Amber-400 for active drawing
             ctx.lineWidth = 2;
-            ctx.setLineDash([8, 4]); // Dashed
+            ctx.setLineDash([6, 4]); 
             ctx.strokeRect(currentRect.x, currentRect.y, currentRect.w, currentRect.h);
             ctx.restore();
-
-            // Dynamic Size Indicator
-            const w = Math.round(Math.abs(currentRect.w));
-            const h = Math.round(Math.abs(currentRect.h));
-            const sizeText = `${w} × ${h}`;
-
-            ctx.font = "11px 'JetBrains Mono', monospace";
-            const tm = ctx.measureText(sizeText);
-            const padding = 6;
-            const bgHeight = 20;
-
-            // Position near the bottom-right of the selection (follow cursor area)
-            // Normalize current rect end point
-            const endX = currentRect.x + currentRect.w;
-            const endY = currentRect.y + currentRect.h;
-            
-            // Offset slightly
-            const indicatorX = endX + 12;
-            const indicatorY = endY + 12;
-
-            // Draw pill background
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
-            ctx.beginPath();
-            ctx.roundRect(indicatorX, indicatorY, tm.width + padding * 2, bgHeight, 4);
-            ctx.fill();
-            
-            // Draw text
-            ctx.fillStyle = '#22d3ee';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(sizeText, indicatorX + padding, indicatorY + bgHeight/2);
         }
     }
   };
@@ -231,12 +187,10 @@ export const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ imageBase64, onC
     const w = pos.x - startPos.x;
     const h = pos.y - startPos.y;
 
-    // Only add if it's a significant drag
     if (Math.abs(w) > 5 && Math.abs(h) > 5) {
         const newRect = { x: startPos.x, y: startPos.y, w, h, label: selectedLabel };
         const newAnnotations = [...annotations, newRect];
         
-        // Update History
         const newHistory = history.slice(0, historyStep + 1);
         newHistory.push(newAnnotations);
         
@@ -246,7 +200,6 @@ export const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ imageBase64, onC
         
         draw(imageElement, newAnnotations, null);
     } else {
-        // Redraw to clear the drag preview
         draw(imageElement, annotations, null);
     }
   };
@@ -285,7 +238,7 @@ export const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ imageBase64, onC
   };
 
   return (
-    <div className="flex flex-col h-full w-full">
+    <div className="flex flex-col h-full w-full bg-[#0B1120] text-slate-200">
         {showMap && (
           <LocationPicker 
             onConfirm={handleMapConfirm} 
@@ -294,67 +247,50 @@ export const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ imageBase64, onC
           />
         )}
 
-        {/* Instructions Bar */}
-        <div className="bg-slate-900/80 border-b border-slate-700 p-2 sm:p-3 flex flex-wrap justify-between items-center backdrop-blur-md z-10 gap-2">
-            <div className="flex items-center space-x-2 text-cyan-400">
-                <Scan className="w-5 h-5 animate-pulse" />
-                <span className="text-xs font-mono font-bold tracking-widest uppercase hidden sm:inline">Target Designation</span>
+        {/* Floating Controls Overlay */}
+        <div className="absolute top-4 left-4 right-4 z-10 flex justify-between items-start pointer-events-none">
+            {/* Type Selector (Floating) */}
+            <div className="pointer-events-auto bg-slate-900/90 backdrop-blur-md border border-slate-700 rounded-lg shadow-xl p-1.5 flex flex-col gap-1">
+                 <div className="px-2 py-1 text-[10px] text-slate-500 font-mono uppercase tracking-wider flex items-center gap-1">
+                   <Settings2 className="w-3 h-3" /> Annotation Mode
+                 </div>
+                 <select
+                      value={selectedLabel}
+                      onChange={(e) => setSelectedLabel(e.target.value)}
+                      className="bg-slate-800 border border-slate-600 text-white text-xs font-mono py-2 pl-3 pr-8 rounded focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 hover:bg-slate-700 cursor-pointer"
+                  >
+                      {HAZARD_TYPES.map(type => (
+                          <option key={type} value={type}>{type}</option>
+                      ))}
+                  </select>
             </div>
-            
-            <div className="flex items-center gap-4 flex-grow justify-center sm:justify-end">
-                {/* Hazard Type Selector */}
-                <div className="relative group">
-                    <div className="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none">
-                        <Tag className="h-3 w-3 text-cyan-500" />
-                    </div>
-                    <select
-                        value={selectedLabel}
-                        onChange={(e) => setSelectedLabel(e.target.value)}
-                        className="bg-slate-950 border border-slate-700 text-slate-300 text-[10px] sm:text-xs font-mono py-1.5 pl-8 pr-8 rounded focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-all uppercase appearance-none cursor-pointer hover:bg-slate-900"
-                    >
-                        {HAZARD_TYPES.map(type => (
-                            <option key={type} value={type}>{type}</option>
-                        ))}
-                    </select>
-                    <div className="absolute inset-y-0 right-0 pr-2 flex items-center pointer-events-none">
-                         <div className="w-0 h-0 border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent border-t-[4px] border-t-slate-500"></div>
-                    </div>
-                </div>
 
-                <div className="flex items-center gap-3 border-l border-slate-700 pl-4">
-                    {/* Counter Display */}
-                     <div className="flex items-center gap-1.5" title="Total Targets Marked">
-                        <span className="text-[10px] text-slate-500 font-mono uppercase">COUNT:</span>
-                        <span className="text-xs font-bold text-cyan-400 font-mono">{annotations.length}</span>
-                    </div>
-
-                    {/* Edit Controls */}
-                    <div className="flex items-center gap-1">
-                        <button 
-                          onClick={handleUndo} 
-                          disabled={historyStep === 0}
-                          className="p-1.5 rounded hover:bg-slate-800 text-slate-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                          title="Undo"
-                        >
-                            <Undo2 className="w-4 h-4" />
-                        </button>
-                        <button 
-                            onClick={handleRedo} 
-                            disabled={historyStep === history.length - 1}
-                            className="p-1.5 rounded hover:bg-slate-800 text-slate-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                            title="Redo"
-                        >
-                            <Redo2 className="w-4 h-4" />
-                        </button>
-                    </div>
-                </div>
+            {/* History Controls (Floating) */}
+            <div className="pointer-events-auto bg-slate-900/90 backdrop-blur-md border border-slate-700 rounded-lg shadow-xl p-1.5 flex items-center gap-1">
+                 <button 
+                  onClick={handleUndo} 
+                  disabled={historyStep === 0}
+                  className="p-2 rounded hover:bg-slate-800 text-slate-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  title="Undo"
+                >
+                    <Undo2 className="w-4 h-4" />
+                </button>
+                <div className="w-px h-4 bg-slate-700 mx-1"></div>
+                <button 
+                    onClick={handleRedo} 
+                    disabled={historyStep === history.length - 1}
+                    className="p-2 rounded hover:bg-slate-800 text-slate-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    title="Redo"
+                >
+                    <Redo2 className="w-4 h-4" />
+                </button>
             </div>
         </div>
 
         {/* Canvas Area */}
         <div 
             ref={containerRef} 
-            className="flex-grow relative bg-black flex items-center justify-center overflow-hidden cursor-crosshair"
+            className="flex-grow relative bg-[#020617] flex items-center justify-center overflow-hidden cursor-crosshair"
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
@@ -363,63 +299,66 @@ export const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ imageBase64, onC
             onTouchMove={handleMouseMove}
             onTouchEnd={handleMouseUp}
         >
-            <canvas ref={canvasRef} className="max-w-full max-h-full object-contain shadow-2xl" />
+            {/* Grid Pattern */}
+             <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:40px_40px] pointer-events-none"></div>
+
+            <canvas ref={canvasRef} className="max-w-full max-h-full object-contain shadow-2xl relative z-0" />
             
             {!isDrawing && annotations.length === 0 && (
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <div className="text-center p-4 bg-black/60 backdrop-blur rounded-lg border border-slate-700">
-                        <MousePointer2 className="w-8 h-8 text-white mx-auto mb-2 animate-bounce" />
-                        <p className="text-xs font-mono text-slate-300">SELECT TYPE & DRAG TO MARK</p>
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+                    <div className="flex items-center gap-3 px-6 py-3 bg-black/70 backdrop-blur-md rounded-full border border-slate-700/50 text-slate-300">
+                        <MousePointer2 className="w-4 h-4 text-cyan-400 animate-bounce" />
+                        <span className="text-xs font-mono tracking-wide">CLICK & DRAG TO DESIGNATE TARGET</span>
                     </div>
                 </div>
             )}
         </div>
 
-        {/* Action Bar */}
-        <div className="p-4 bg-slate-900 border-t border-slate-800 flex flex-col md:flex-row gap-4 items-stretch md:items-center">
+        {/* Bottom Action Bar */}
+        <div className="p-4 bg-slate-900 border-t border-slate-800 flex flex-col md:flex-row gap-4 items-stretch md:items-center relative z-20 shadow-[0_-10px_40px_rgba(0,0,0,0.3)]">
             
             {/* Location Input Group */}
             <div className="flex-grow flex items-center gap-2">
                 <div className="flex-grow relative group">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <MapPin className="h-4 w-4 text-slate-500 group-focus-within:text-cyan-400" />
+                    <MapPin className="h-4 w-4 text-slate-500 group-focus-within:text-cyan-400 transition-colors" />
                   </div>
                   <input 
                     type="text" 
                     value={location}
                     onChange={(e) => setLocation(e.target.value)}
-                    placeholder="ENTER LOCATION (e.g. MG Road, Near Clock Tower)"
-                    className="w-full bg-slate-950 border border-slate-700 text-slate-200 text-xs font-mono py-3 pl-10 pr-3 rounded-l focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-all uppercase placeholder:text-slate-600"
+                    placeholder="Enter location identifier..."
+                    className="w-full bg-slate-950/50 border border-slate-700 text-slate-200 text-sm font-sans py-2.5 pl-10 pr-3 rounded focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-all placeholder:text-slate-600"
                   />
                 </div>
                 <button
                     onClick={() => setShowMap(true)}
-                    className="bg-slate-800 border border-slate-700 hover:border-cyan-500 text-cyan-400 px-3 py-3 rounded-r flex items-center justify-center transition-all hover:bg-slate-700"
-                    title="Pin on Map"
+                    className="bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-cyan-500/50 text-cyan-400 px-4 py-2.5 rounded transition-all shadow-sm"
+                    title="Open Map Interface"
                 >
-                    <Globe className="w-4 h-4" />
+                    <Globe className="w-5 h-5" />
                 </button>
             </div>
 
-            <div className="flex gap-2 shrink-0">
+            <div className="flex gap-3 shrink-0">
               <button 
                   onClick={onRetake}
-                  className="px-4 py-3 bg-slate-800 text-slate-300 font-mono text-xs uppercase tracking-wider hover:bg-slate-700 rounded transition-colors flex items-center justify-center gap-2"
+                  className="px-5 py-2.5 bg-transparent border border-slate-700 hover:bg-slate-800 text-slate-400 hover:text-white font-medium text-sm rounded transition-colors flex items-center gap-2"
               >
-                  <RefreshCw className="w-3 h-3" />
-                  <span className="hidden sm:inline">Reset</span>
+                  <RefreshCw className="w-4 h-4" />
+                  Reset
               </button>
               <button 
                   onClick={handleConfirm}
                   disabled={location.trim() === ""}
-                  className={`px-6 py-3 font-mono text-xs font-bold uppercase tracking-wider rounded shadow-lg flex items-center justify-center gap-2 transition-all
+                  className={`px-8 py-2.5 font-bold text-sm uppercase tracking-wide rounded shadow-lg flex items-center justify-center gap-2 transition-all transform hover:-translate-y-0.5
                     ${location.trim() === "" 
-                      ? 'bg-slate-800 text-slate-500 cursor-not-allowed' 
-                      : 'bg-cyan-600 text-white hover:bg-cyan-500 shadow-[0_0_20px_rgba(6,182,212,0.3)]'}
+                      ? 'bg-slate-800 text-slate-600 cursor-not-allowed' 
+                      : 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white hover:from-cyan-500 hover:to-blue-500 shadow-cyan-900/20'}
                   `}
               >
                   <Check className="w-4 h-4" />
-                  Lock Target & Scan
+                  Lock & Analyze
               </button>
             </div>
         </div>

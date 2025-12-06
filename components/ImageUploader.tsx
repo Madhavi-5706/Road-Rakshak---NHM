@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { Upload, Aperture } from 'lucide-react';
+import { Upload, ScanLine, Aperture, FileUp } from 'lucide-react';
 
 interface ImageUploaderProps {
   onImageSelect: (file: File) => void;
@@ -38,10 +38,10 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImageSelect }) =
 
   return (
     <div 
-      className={`relative group w-full h-[300px] border border-dashed transition-all duration-300 ease-out cursor-pointer overflow-hidden bg-slate-900/50 backdrop-blur-sm flex flex-col items-center justify-center
+      className={`relative group w-full h-[320px] rounded-2xl transition-all duration-500 ease-out cursor-pointer overflow-hidden backdrop-blur-md
         ${isDragging 
-          ? 'border-cyan-400 bg-cyan-950/30 shadow-[0_0_30px_rgba(6,182,212,0.2)]' 
-          : 'border-slate-700 hover:border-cyan-500/50 hover:bg-slate-900'}
+          ? 'bg-cyan-900/20 ring-2 ring-cyan-500 shadow-[0_0_50px_rgba(6,182,212,0.3)]' 
+          : 'bg-[#0B1120] border border-slate-700/50 hover:border-cyan-500/50 hover:shadow-2xl hover:shadow-cyan-900/10'}
       `}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -53,29 +53,39 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImageSelect }) =
         onChange={handleFileInput}
         className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
       />
-      
-      {/* Corner Brackets */}
-      <div className={`absolute top-0 left-0 w-4 h-4 border-t border-l transition-colors duration-300 ${isDragging ? 'border-cyan-400' : 'border-slate-600'}`}></div>
-      <div className={`absolute top-0 right-0 w-4 h-4 border-t border-r transition-colors duration-300 ${isDragging ? 'border-cyan-400' : 'border-slate-600'}`}></div>
-      <div className={`absolute bottom-0 left-0 w-4 h-4 border-b border-l transition-colors duration-300 ${isDragging ? 'border-cyan-400' : 'border-slate-600'}`}></div>
-      <div className={`absolute bottom-0 right-0 w-4 h-4 border-b border-r transition-colors duration-300 ${isDragging ? 'border-cyan-400' : 'border-slate-600'}`}></div>
 
-      <div className="z-10 flex flex-col items-center space-y-6 px-4 text-center pointer-events-none">
-        <div className={`p-6 rounded-full bg-slate-950 border transition-all duration-500 relative
-             ${isDragging ? 'border-cyan-400 text-cyan-400 shadow-[0_0_20px_rgba(6,182,212,0.4)]' : 'border-slate-700 text-slate-500 group-hover:border-cyan-500/50 group-hover:text-cyan-500'}
+      {/* Grid Pattern Background */}
+      <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:32px_32px] opacity-20 pointer-events-none"></div>
+
+      {/* Animated Scan Line (Visible on Hover/Drag) */}
+      <div className={`absolute left-0 right-0 h-1 bg-cyan-400/50 blur-sm transition-all duration-1000 ${isDragging ? 'animate-scan' : 'top-1/2 opacity-0 group-hover:opacity-100 group-hover:animate-scan'}`}></div>
+
+      <div className="absolute inset-0 z-10 flex flex-col items-center justify-center p-8 text-center pointer-events-none">
+        
+        {/* Animated Icon Container */}
+        <div className={`w-20 h-20 rounded-2xl flex items-center justify-center mb-6 transition-all duration-500 relative
+             ${isDragging ? 'bg-cyan-500/20 text-cyan-400' : 'bg-slate-800/50 text-slate-400 group-hover:bg-cyan-950/50 group-hover:text-cyan-400 group-hover:scale-110'}
         `}>
-          <Upload className="w-8 h-8 relative z-10" />
-          {/* Rotating ring effect */}
-          <div className="absolute inset-0 rounded-full border border-dashed border-current opacity-20 animate-[spin_10s_linear_infinite]"></div>
+          {isDragging ? <ScanLine className="w-10 h-10 animate-pulse" /> : <Upload className="w-10 h-10" />}
+          
+          {/* Rotating borders */}
+          <div className="absolute inset-0 border border-current opacity-30 rounded-2xl animate-[spin_10s_linear_infinite]"></div>
         </div>
         
-        <div className="space-y-1">
-          <p className="text-lg font-mono font-bold tracking-wider uppercase text-slate-300 group-hover:text-white transition-colors">
-            {isDragging ? '>> INITIALIZE UPLINK <<' : 'Upload Source Imagery'}
+        <div className="space-y-3 max-w-sm">
+          <h3 className={`text-xl font-bold tracking-tight transition-colors ${isDragging ? 'text-cyan-400' : 'text-white group-hover:text-cyan-100'}`}>
+            {isDragging ? 'RELEASE TO SCAN' : 'Drop Evidence Imagery'}
+          </h3>
+          <p className="text-slate-500 text-sm font-medium">
+            Drag & drop road hazard photos, or <span className="text-cyan-500 underline decoration-cyan-500/30 underline-offset-4">browse system</span>
           </p>
-          <p className="text-slate-500 text-xs font-mono">
-            [ SUPPORTED FORMATS: JPG, PNG, WEBP ]
-          </p>
+        </div>
+
+        {/* Footer info */}
+        <div className="absolute bottom-6 flex gap-4 text-[10px] font-mono text-slate-600 uppercase tracking-widest">
+           <span className="flex items-center gap-1.5"><FileUp className="w-3 h-3" /> JPG</span>
+           <span className="flex items-center gap-1.5"><FileUp className="w-3 h-3" /> PNG</span>
+           <span className="flex items-center gap-1.5"><FileUp className="w-3 h-3" /> WEBP</span>
         </div>
       </div>
     </div>

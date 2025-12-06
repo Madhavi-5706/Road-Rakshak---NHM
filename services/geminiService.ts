@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
-import { AnalysisResult, RiskAnalysisResult } from '../types';
+import { AnalysisResult, RiskAnalysisResult, AuthorityDetails } from '../types';
 
 const getVisionPrompt = (location: string) => `
 You are an expert infrastructure safety auditor and spatial reasoning assistant. Your task is to analyze the provided image of a road.
@@ -123,6 +123,33 @@ const riskSchema: Schema = {
   required: ["location", "risk_breakdown", "top_hotspots", "most_common_cause", "time_analysis", "analytics_summary"]
 };
 
+// Backend Simulation Prompt - Authority Finder
+const getAuthorityPrompt = (location: string) => `
+You are a government administrative backend system. Your task is to identify the CORRECT jurisdiction authority responsible for road infrastructure maintenance at this specific location: "${location}".
+
+Rules:
+1. If the location is within a city, identify the Municipal Corporation (e.g., "BBMP", "GHMC", "BMC") or the local Ward Office.
+2. If it is on a Highway, identify the NHAI Project Unit or relevant PWD division.
+3. If it is a traffic/accident hazard, identify the nearest Traffic Police Station.
+4. Provide a plausible official email address (e.g., commissioner@ghmc.gov.in) and office address.
+
+You MUST respond with a JSON object.
+`;
+
+const authoritySchema: Schema = {
+  type: Type.OBJECT,
+  properties: {
+    name: { type: Type.STRING, description: "Official name of the authority, e.g., 'Vijayawada Municipal Corporation - Zone II' or 'Suryaraopeta Police Station'" },
+    type: { type: Type.STRING, enum: ['Police Station', 'Municipal Corporation', 'Public Works Department', 'Traffic Police'] },
+    email: { type: Type.STRING, description: "Official contact email. If unknown, generate a plausible placeholder ending in .gov.in or .org" },
+    address: { type: Type.STRING, description: "Full address of the office including pincode" },
+    phone: { type: Type.STRING, description: "Landline contact number" },
+    distance_km: { type: Type.STRING, description: "Estimated distance from the hazard location (e.g., '2.5 km')" }
+  },
+  required: ["name", "type", "email", "address", "phone", "distance_km"]
+};
+
+
 export const analyzeRoadImage = async (base64Image: string, mimeType: string, location: string): Promise<AnalysisResult> => {
   const apiKey = process.env.API_KEY;
   if (!apiKey) {
@@ -196,6 +223,42 @@ export const analyzeRiskProfile = async (location: string): Promise<RiskAnalysis
       most_common_cause: "Data Unavailable",
       time_analysis: { day_percentage: 50, night_percentage: 50 },
       analytics_summary: "Data connection failed. Showing estimated fallback statistics."
+    };
+  }
+};
+
+export const findRelevantAuthority = async (location: string): Promise<AuthorityDetails> => {
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) throw new Error("API Key not found");
+  
+  const ai = new GoogleGenAI({ apiKey });
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: {
+        parts: [{ text: getAuthorityPrompt(location) }]
+      },
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: authoritySchema,
+        temperature: 0.1, 
+      }
+    });
+
+    const text = response.text;
+    if (!text) throw new Error("No authority data received");
+
+    return JSON.parse(text) as AuthorityDetails;
+  } catch (error) {
+    console.error("Gemini API Error (Authority):", error);
+    return {
+      name: "Local Municipal Authority",
+      type: "Municipal Corporation",
+      email: "complaints@municipal.gov.in",
+      address: "City Administrative Building, Civic Center",
+      phone: "1800-11-2233",
+      distance_km: "Unknown"
     };
   }
 };

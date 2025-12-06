@@ -1,5 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { MapPin, Navigation, Check, X, Loader2, AlertTriangle } from 'lucide-react';
+import { MapPin, Navigation, Check, X, Loader2, AlertTriangle, Search, LocateFixed } from 'lucide-react';
+
+// Use the Geoapify key provided
+const GEOAPIFY_API_KEY = "7aa08a8dfa7c401fbdf3fb69f7f06ca7";
 
 interface LocationPickerProps {
   onConfirm: (address: string) => void;
@@ -7,176 +10,238 @@ interface LocationPickerProps {
   initialLocation?: string;
 }
 
-const DARK_MAP_STYLE = [
-  { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
-  { elementType: "labels.text.stroke", stylers: [{ color: "#242f3e" }] },
-  { elementType: "labels.text.fill", stylers: [{ color: "#746855" }] },
-  { featureType: "administrative.locality", elementType: "labels.text.fill", stylers: [{ color: "#d59563" }] },
-  { featureType: "poi", elementType: "labels.text.fill", stylers: [{ color: "#d59563" }] },
-  { featureType: "poi.park", elementType: "geometry", stylers: [{ color: "#263c3f" }] },
-  { featureType: "poi.park", elementType: "labels.text.fill", stylers: [{ color: "#6b9a76" }] },
-  { featureType: "road", elementType: "geometry", stylers: [{ color: "#38414e" }] },
-  { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#212a37" }] },
-  { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#9ca5b3" }] },
-  { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#746855" }] },
-  { featureType: "road.highway", elementType: "geometry.stroke", stylers: [{ color: "#1f2835" }] },
-  { featureType: "road.highway", elementType: "labels.text.fill", stylers: [{ color: "#f3d19c" }] },
-  { featureType: "transit", elementType: "geometry", stylers: [{ color: "#2f3948" }] },
-  { featureType: "transit.station", elementType: "labels.text.fill", stylers: [{ color: "#d59563" }] },
-  { featureType: "water", elementType: "geometry", stylers: [{ color: "#17263c" }] },
-  { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#515c6d" }] },
-  { featureType: "water", elementType: "labels.text.stroke", stylers: [{ color: "#17263c" }] }
-];
+export const LocationPicker: React.FC<LocationPickerProps> = ({ onConfirm, onCancel, initialLocation }) => {
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const mapInstanceRef = useRef<any>(null);
+  const markerRef = useRef<any>(null);
 
-export const LocationPicker: React.FC<LocationPickerProps> = ({ onConfirm, onCancel }) => {
-  const mapRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedAddress, setSelectedAddress] = useState<string>("");
-  const [mapInstance, setMapInstance] = useState<any>(null);
-  const [markerInstance, setMarkerInstance] = useState<any>(null);
-  const [geocoderInstance, setGeocoderInstance] = useState<any>(null);
+  // Track specific map load error separate from critical failure
+  const [mapError, setMapError] = useState<boolean>(false);
+  
+  // Search State
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
 
   useEffect(() => {
-    // Handle Global Auth Failure (Invalid Key)
-    (window as any).gm_authFailure = () => {
-      console.error("Google Maps Authentication Failure");
-      setLoading(false);
-      setError("ACCESS DENIED: Maps API Key Invalid or Not Enabled.");
-    };
-
-    // Check if Google Maps script is already loaded
-    if ((window as any).google && (window as any).google.maps) {
+    // Initialize Map
+    if (mapContainerRef.current && !mapInstanceRef.current) {
       initMap();
-    } else {
-      const script = document.createElement('script');
-      // Adding loading=async and callback=initMap is better practice, but sticking to previous simple logic with auth handler
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${process.env.API_KEY}&libraries=places`;
-      script.async = true;
-      script.defer = true;
-      script.onload = () => initMap();
-      script.onerror = () => {
-        setLoading(false);
-        setError("CONNECTION FAILED: Unable to load SatNav Uplink.");
-      };
-      document.head.appendChild(script);
     }
-
+    
     return () => {
-      // Cleanup global handler
-      (window as any).gm_authFailure = undefined;
+      // Cleanup map instance on unmount
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+      }
     };
   }, []);
 
-  const initMap = () => {
-    // Double check if loaded
-    if (!(window as any).google?.maps) {
-       // Retry shortly if script loaded but object not ready (unlikely with onload)
-       return;
-    }
-
-    setLoading(true);
-    if (!mapRef.current) return;
-
+  const initMap = async () => {
     try {
-      const google = (window as any).google;
-      const geocoder = new google.maps.Geocoder();
-      setGeocoderInstance(geocoder);
+      // Check if Leaflet is loaded
+      if (!(window as any).L) {
+        setError("Map Module (Leaflet) not loaded.");
+        setLoading(false);
+        return;
+      }
 
-      // Default center (India/Bangalore approx)
-      const defaultPos = { lat: 12.9716, lng: 77.5946 };
+      const L = (window as any).L;
 
-      const map = new google.maps.Map(mapRef.current, {
-        center: defaultPos,
-        zoom: 15,
-        styles: DARK_MAP_STYLE,
-        disableDefaultUI: true,
-        zoomControl: true,
+      // Default center (Bangalore approx) - used if no other location found
+      const defaultLat = 12.9716;
+      const defaultLng = 77.5946;
+
+      const map = L.map(mapContainerRef.current, { zoomControl: false }).setView([defaultLat, defaultLng], 14);
+      mapInstanceRef.current = map;
+      
+      // Add zoom control to top right to avoid conflict with search bar
+      L.control.zoom({
+        position: 'topright'
+      }).addTo(map);
+
+      // Geoapify OSM Bright Tile Layer (Standard Theme)
+      const tileLayer = L.tileLayer(`https://maps.geoapify.com/v1/tile/osm-bright/{z}/{x}/{y}.png?apiKey=${GEOAPIFY_API_KEY}`, {
+        attribution: 'Powered by Geoapify | © OpenStreetMap contributors',
+        maxZoom: 20, 
+        id: 'osm-bright',
       });
-      setMapInstance(map);
-
-      const marker = new google.maps.Marker({
-        map: map,
-        position: defaultPos,
-        draggable: true,
-        animation: google.maps.Animation.DROP,
-      });
-      setMarkerInstance(marker);
-
-      // Listener for clicks
-      map.addListener("click", (e: any) => {
-        const clickedPos = e.latLng;
-        marker.setPosition(clickedPos);
-        geocodePosition(clickedPos, geocoder);
+      
+      tileLayer.addTo(map);
+      
+      // Add tile error handler
+      tileLayer.on('tileerror', () => {
+         setMapError(true);
+         // Do not block UI, just note it
       });
 
-      // Listener for drag
-      marker.addListener("dragend", () => {
-        const pos = marker.getPosition();
-        geocodePosition(pos, geocoder);
+      // Standard Marker Icon (Blue Dot)
+      const customIcon = L.divIcon({
+        className: 'custom-div-icon',
+        html: `<div style="background-color: #2563eb; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"></div>`,
+        iconSize: [16, 16],
+        iconAnchor: [8, 8]
       });
 
-      // Try to get actual location
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          (position) => {
-            const pos = {
-              lat: position.coords.latitude,
-              lng: position.coords.longitude,
-            };
-            map.setCenter(pos);
-            marker.setPosition(pos);
-            geocodePosition(pos, geocoder);
-            setLoading(false);
-          },
-          () => {
-            setLoading(false); // Failed to get location, keep default
+      // Add Marker
+      const marker = L.marker([defaultLat, defaultLng], { icon: customIcon, draggable: true }).addTo(map);
+      markerRef.current = marker;
+
+      // Map Click Event
+      map.on('click', (e: any) => {
+        const { lat, lng } = e.latlng;
+        marker.setLatLng([lat, lng]);
+        handleLocationSelect(lat, lng);
+      });
+
+      // Marker Drag Event
+      marker.on('dragend', (e: any) => {
+        const { lat, lng } = marker.getLatLng();
+        handleLocationSelect(lat, lng);
+      });
+
+      // Logic to resolve initial view
+      let locationResolved = false;
+
+      if (initialLocation && initialLocation.trim() !== "" && initialLocation !== "Unknown Location") {
+          try {
+              const encoded = encodeURIComponent(initialLocation);
+              const response = await fetch(
+                  `https://api.geoapify.com/v1/geocode/search?text=${encoded}&apiKey=${GEOAPIFY_API_KEY}&limit=1`
+              );
+              const data = await response.json();
+              if (data.features && data.features.length > 0) {
+                  const { lat, lon, formatted } = data.features[0].properties;
+                  map.setView([lat, lon], 16);
+                  marker.setLatLng([lat, lon]);
+                  // Set address directly so button is enabled immediately
+                  setSelectedAddress(formatted || initialLocation);
+                  locationResolved = true;
+              }
+          } catch (e) {
+              console.warn("Initial location resolution failed", e);
           }
-        );
+      }
+
+      if (!locationResolved && navigator.geolocation) {
+         navigator.geolocation.getCurrentPosition(
+            (position) => {
+                const lat = position.coords.latitude;
+                const lng = position.coords.longitude;
+                map.setView([lat, lng], 16);
+                marker.setLatLng([lat, lng]);
+                handleLocationSelect(lat, lng);
+            },
+            () => {
+                // Denied or failed, just stop loading
+                setLoading(false);
+            }
+         );
       } else {
         setLoading(false);
       }
 
-    } catch (e) {
-      console.error(e);
-      setError("Map Initialization Protocol Failed.");
+    } catch (err) {
+      console.error(err);
+      setError("Failed to initialize Geo-Interface.");
       setLoading(false);
     }
   };
 
-  const geocodePosition = (pos: any, geocoder: any) => {
-    geocoder.geocode({ location: pos }, (results: any, status: any) => {
-      if (status === "OK" && results[0]) {
-        setSelectedAddress(results[0].formatted_address);
-      } else {
-        setSelectedAddress("Unknown Coordinates");
-      }
-    });
-  };
-
-  const handleCurrentLocation = () => {
-    if (!mapInstance || !markerInstance || !geocoderInstance) return;
-    setLoading(true);
+  const handleLocationSelect = async (lat: number, lng: number) => {
+    setSelectedAddress("Scanning Grid...");
     
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const pos = {
-            lat: position.coords.latitude,
-            lng: position.coords.longitude,
-          };
-          mapInstance.setCenter(pos);
-          markerInstance.setPosition(pos);
-          geocodePosition(pos, geocoderInstance);
-          setLoading(false);
-        },
-        () => setLoading(false)
+    try {
+      const response = await fetch(
+        `https://api.geoapify.com/v1/geocode/reverse?lat=${lat}&lon=${lng}&apiKey=${GEOAPIFY_API_KEY}`
       );
+      
+      if (!response.ok) throw new Error("Network response was not ok");
+      
+      const data = await response.json();
+      
+      if (data.features && data.features.length > 0) {
+        const properties = data.features[0].properties;
+        const formatted = properties.formatted;
+        setSelectedAddress(formatted);
+      } else {
+        setSelectedAddress("Unknown Sector");
+      }
+    } catch (err) {
+      console.error("Geocoding error:", err);
+      // Fallback to coordinates so button is enabled
+      setSelectedAddress(`${lat.toFixed(6)}, ${lng.toFixed(6)}`);
     }
   };
 
+  const handleCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      alert("Geolocation is not supported by your browser");
+      return;
+    }
+
+    setLoading(true);
+    
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        if (mapInstanceRef.current && markerRef.current) {
+           mapInstanceRef.current.setView([latitude, longitude], 16);
+           markerRef.current.setLatLng([latitude, longitude]);
+           handleLocationSelect(latitude, longitude);
+        }
+        setLoading(false);
+      },
+      (error) => {
+        console.error("Geolocation error:", error);
+        setLoading(false);
+        let msg = "Unable to retrieve location.";
+        if (error.code === 1) msg = "Location permission denied. Please enable access.";
+        else if (error.code === 2) msg = "Location unavailable.";
+        else if (error.code === 3) msg = "Location request timed out.";
+        alert(msg);
+      },
+      { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+    );
+  };
+
+  const handleSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!searchQuery.trim()) return;
+
+    setIsSearching(true);
+    try {
+        const encoded = encodeURIComponent(searchQuery);
+        const response = await fetch(
+            `https://api.geoapify.com/v1/geocode/search?text=${encoded}&apiKey=${GEOAPIFY_API_KEY}&limit=1`
+        );
+        const data = await response.json();
+        
+        if (data.features && data.features.length > 0) {
+            const { lat, lon, formatted } = data.features[0].properties;
+            if (mapInstanceRef.current && markerRef.current) {
+                mapInstanceRef.current.setView([lat, lon], 16);
+                markerRef.current.setLatLng([lat, lon]);
+                setSelectedAddress(formatted);
+            }
+        } else {
+            alert("Location not found");
+        }
+    } catch (err) {
+        console.error(err);
+    } finally {
+        setIsSearching(false);
+    }
+  };
+
+  // ROBUST ENABLE LOGIC: Ensure button is enabled if we have a string that isn't the loading state
+  const isConfirmEnabled = Boolean(selectedAddress && selectedAddress !== "Scanning Grid..." && selectedAddress.length > 0);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-300">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-300">
       <div className="w-full max-w-3xl bg-slate-900 border border-slate-700 rounded-lg shadow-2xl overflow-hidden flex flex-col h-[80vh]">
         
         {/* Header */}
@@ -191,47 +256,69 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({ onConfirm, onCan
         </div>
 
         {/* Map Container */}
-        <div className="flex-grow relative bg-black">
+        <div className="flex-grow relative bg-slate-100">
            {loading && !error && (
-             <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/70 text-cyan-400">
+             <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-slate-100/80 text-cyan-700">
                 <Loader2 className="w-10 h-10 animate-spin mb-2" />
                 <span className="font-mono text-xs uppercase tracking-widest">Acquiring Satellite Feed...</span>
              </div>
            )}
            
            {error ? (
-             <div className="absolute inset-0 z-10 flex flex-col items-center justify-center text-red-400 p-8 text-center bg-slate-950">
+             <div className="absolute inset-0 z-10 flex flex-col items-center justify-center text-red-500 p-8 text-center bg-slate-100">
                 <AlertTriangle className="w-12 h-12 mb-4 animate-pulse" />
                 <p className="font-mono font-bold mb-2 text-lg">SIGNAL LOST</p>
-                <p className="text-sm font-mono text-red-300/70 mb-6 max-w-md">{error}</p>
+                <p className="text-sm font-mono text-red-500/70 mb-6 max-w-md">{error}</p>
                 <button 
                   onClick={onCancel}
-                  className="px-6 py-2 border border-red-500/50 hover:bg-red-950/30 text-red-400 font-mono text-xs uppercase rounded transition-colors"
+                  className="px-6 py-2 border border-red-500/50 hover:bg-red-50 text-red-500 font-mono text-xs uppercase rounded transition-colors"
                 >
                   Return to Manual Entry
                 </button>
              </div>
            ) : (
-             <div ref={mapRef} className="w-full h-full" />
+             <>
+               <div ref={mapContainerRef} className="w-full h-full z-0" />
+               
+               {/* Search Overlay */}
+               <div className="absolute top-4 left-4 z-[400] w-64 max-w-[calc(100%-80px)]">
+                    <form onSubmit={handleSearch} className="relative shadow-lg rounded-full">
+                        <input 
+                            type="text"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            placeholder="Search location..."
+                            className="w-full pl-4 pr-10 py-2.5 rounded-full border border-slate-200 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 text-slate-800 text-sm font-sans bg-white/95 backdrop-blur-sm"
+                        />
+                        <button 
+                            type="submit"
+                            disabled={isSearching}
+                            className="absolute right-1 top-1/2 -translate-y-1/2 p-1.5 bg-transparent text-slate-500 hover:text-cyan-600 rounded-full transition-colors"
+                        >
+                            {isSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                        </button>
+                    </form>
+               </div>
+             </>
            )}
 
-           {/* Map Controls Overlay - Only show if no error */}
+           {/* Map Controls Overlay */}
            {!error && (
-             <div className="absolute bottom-4 right-4 flex flex-col gap-2">
+             <div className="absolute bottom-4 right-4 flex flex-col gap-2 z-[400]">
                 <button 
                   onClick={handleCurrentLocation}
-                  className="p-3 bg-slate-900 border border-slate-600 rounded-full text-cyan-400 hover:bg-slate-800 hover:text-white shadow-lg transition-all"
-                  title="My Location"
+                  className="p-3 bg-white border border-slate-200 rounded-full text-slate-700 hover:bg-slate-50 shadow-lg transition-all"
+                  title="Center on My Location"
                 >
-                  <Navigation className="w-5 h-5" />
+                  <LocateFixed className="w-5 h-5" />
                 </button>
              </div>
            )}
         </div>
 
         {/* Footer / Address Display */}
-        <div className="p-4 bg-slate-950 border-t border-slate-800 flex flex-col sm:flex-row gap-4 items-center justify-between">
-           <div className="flex-grow w-full sm:w-auto">
+        <div className="p-4 bg-slate-950 border-t border-slate-800 flex flex-col gap-4">
+           <div className="w-full">
               <div className="text-[10px] text-slate-500 uppercase font-mono mb-1">Detected Coordinates</div>
               <div className="text-sm text-slate-200 font-mono truncate border border-slate-800 bg-slate-900 px-3 py-2 rounded">
                  {selectedAddress || (error ? "System Offline" : "Select a point on the map...")}
@@ -240,8 +327,8 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({ onConfirm, onCan
            
            <button 
              onClick={() => onConfirm(selectedAddress)}
-             disabled={!selectedAddress || !!error}
-             className="w-full sm:w-auto px-6 py-3 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500 text-white font-mono text-xs font-bold uppercase tracking-wider rounded flex items-center justify-center gap-2 transition-all shadow-[0_0_15px_rgba(6,182,212,0.3)]"
+             disabled={!isConfirmEnabled}
+             className="w-full px-6 py-3 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500 text-white font-mono text-xs font-bold uppercase tracking-wider rounded flex items-center justify-center gap-2 transition-all shadow-[0_0_15px_rgba(6,182,212,0.3)]"
            >
               <Check className="w-4 h-4" />
               Confirm Grid

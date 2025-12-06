@@ -1,7 +1,17 @@
+
 export interface InferredLocation {
   city_or_landmark: string;
   street_name_or_clue: string;
   confidence_level: 'Low' | 'Medium' | 'High';
+}
+
+export interface AuthorityDetails {
+  name: string;
+  type: 'Police Station' | 'Municipal Corporation' | 'Public Works Department' | 'Traffic Police';
+  email: string;
+  address: string;
+  phone: string;
+  distance_km: string;
 }
 
 export interface AnalysisResult {
@@ -34,4 +44,12 @@ export enum HazardType {
   WATER = 'Waterlogging / Drainage issues',
   OBSTRUCTION = 'Traffic sign obstruction',
   NONE = 'None'
+}
+
+export interface ActivityLog {
+  id: string;
+  timestamp: number;
+  action: string;
+  details: string;
+  status: 'SUCCESS' | 'ERROR' | 'INFO';
 }
