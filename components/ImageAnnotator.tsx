@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { MousePointer2, Check, RefreshCw, MapPin, Undo2, Redo2, Settings2, Globe, Trash2 } from 'lucide-react';
+import { MousePointer2, Check, RefreshCw, MapPin, Undo2, Redo2, Settings2, Globe, Trash2, X } from 'lucide-react';
 import { LocationPicker } from './LocationPicker';
 import { useLanguage } from '../contexts/LanguageContext';
 
@@ -42,29 +42,18 @@ export const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ imageBase64, onC
     };
   }, [imageBase64]);
 
-  // Keyboard Shortcuts for Undo/Redo
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore if typing in input fields
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-
       const isCtrlOrMeta = e.ctrlKey || e.metaKey;
-
       if (isCtrlOrMeta && e.key === 'z') {
         e.preventDefault();
-        if (e.shiftKey) {
-          handleRedo();
-        } else {
-          handleUndo();
-        }
+        if (e.shiftKey) handleRedo(); else handleUndo();
       } else if (isCtrlOrMeta && e.key === 'y') {
         e.preventDefault();
         handleRedo();
-      } else if (e.key === 'Delete' || e.key === 'Backspace') {
-          // Future feature: Delete selected annotation
       }
     };
-
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [historyStep, history, imageElement]);
@@ -101,7 +90,7 @@ export const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ imageBase64, onC
         if (currentRect) reveal(currentRect);
 
         currentAnnotations.forEach(rect => {
-            ctx.strokeStyle = '#FF9933'; // Saffron
+            ctx.strokeStyle = '#FF9933'; 
             ctx.lineWidth = 3; ctx.setLineDash([]); ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
             const rx = rect.w > 0 ? rect.x : rect.x + rect.w;
             const ry = rect.h > 0 ? rect.y : rect.y + rect.h;
@@ -191,7 +180,8 @@ export const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ imageBase64, onC
     <div className="flex flex-col h-full w-full bg-slate-50 relative">
         {showMap && <LocationPicker onConfirm={(addr) => {setLocation(addr); setShowMap(false);}} onCancel={() => setShowMap(false)} initialLocation={location} />}
 
-        <div className="absolute top-4 left-4 right-4 z-10 flex justify-between items-start pointer-events-none">
+        {/* Action Bar */}
+        <div className="absolute top-4 left-4 right-4 z-30 flex justify-between items-start pointer-events-none">
             <div className="pointer-events-auto bg-white/90 backdrop-blur border border-slate-200 rounded-lg shadow-md p-1.5 flex flex-col gap-1">
                  <div className="px-2 py-1 text-[10px] text-slate-500 font-bold uppercase flex items-center gap-1">
                    <Settings2 className="w-3 h-3" /> {t('issue_type')}
@@ -201,35 +191,46 @@ export const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ imageBase64, onC
                   </select>
             </div>
             
-            <div className="pointer-events-auto bg-white/90 backdrop-blur border border-slate-200 rounded-lg shadow-md p-1.5 flex items-center gap-1">
-                 <button 
-                    onClick={handleUndo} 
-                    disabled={historyStep === 0} 
-                    className="p-2 rounded hover:bg-slate-100 text-slate-600 disabled:opacity-30 transition-colors relative group"
-                    title="Undo (Ctrl+Z)"
-                 >
-                    <Undo2 className="w-4 h-4" />
-                 </button>
-                 
-                 <button 
-                    onClick={handleRedo} 
-                    disabled={historyStep === history.length - 1} 
-                    className="p-2 rounded hover:bg-slate-100 text-slate-600 disabled:opacity-30 transition-colors relative group"
-                    title="Redo (Ctrl+Y)"
-                 >
-                    <Redo2 className="w-4 h-4" />
-                 </button>
-                 
-                 <div className="w-px h-4 bg-slate-300 mx-1"></div>
-                 
-                 <button 
-                    onClick={handleClearAll} 
-                    disabled={annotations.length === 0} 
-                    className="p-2 rounded hover:bg-red-50 text-red-600 disabled:text-slate-400 disabled:opacity-30 transition-colors"
-                    title="Clear All"
-                 >
-                    <Trash2 className="w-4 h-4" />
-                 </button>
+            <div className="flex items-center gap-2 pointer-events-auto">
+                <div className="bg-white/90 backdrop-blur border border-slate-200 rounded-lg shadow-md p-1.5 flex items-center gap-1">
+                    <button 
+                        onClick={handleUndo} 
+                        disabled={historyStep === 0} 
+                        className="p-2 rounded hover:bg-slate-100 text-slate-600 disabled:opacity-30 transition-colors relative group"
+                        title="Undo (Ctrl+Z)"
+                    >
+                        <Undo2 className="w-4 h-4" />
+                    </button>
+                    
+                    <button 
+                        onClick={handleRedo} 
+                        disabled={historyStep === history.length - 1} 
+                        className="p-2 rounded hover:bg-slate-100 text-slate-600 disabled:opacity-30 transition-colors relative group"
+                        title="Redo (Ctrl+Y)"
+                    >
+                        <Redo2 className="w-4 h-4" />
+                    </button>
+                    
+                    <div className="w-px h-4 bg-slate-300 mx-1"></div>
+                    
+                    <button 
+                        onClick={handleClearAll} 
+                        disabled={annotations.length === 0} 
+                        className="p-2 rounded hover:bg-red-50 text-red-600 disabled:text-slate-400 disabled:opacity-30 transition-colors"
+                        title="Clear All"
+                    >
+                        <Trash2 className="w-4 h-4" />
+                    </button>
+                </div>
+
+                {/* EXIT BUTTON */}
+                <button 
+                    onClick={onRetake}
+                    className="p-2.5 rounded-lg bg-white/90 backdrop-blur border border-slate-200 text-slate-400 hover:text-red-600 shadow-md transition-all hover:scale-110"
+                    title="Cancel and Go Back"
+                >
+                    <X className="w-6 h-6" />
+                </button>
             </div>
         </div>
 

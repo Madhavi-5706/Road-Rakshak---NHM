@@ -1,4 +1,5 @@
-import { GoogleGenAI, Type, Schema } from "@google/genai";
+
+import { GoogleGenAI, Type } from "@google/genai";
 import { AnalysisResult, RiskAnalysisResult, AuthorityDetails } from '../types';
 
 const getVisionPrompt = (location: string) => `
@@ -25,7 +26,8 @@ Analyze the image for visual geographic clues to verify or identify the location
 You MUST respond with a clean JSON object based on the provided schema.
 `;
 
-const responseSchema: Schema = {
+// Define the response schema using Type from @google/genai
+const responseSchema = {
   type: Type.OBJECT,
   properties: {
     hazard_detected: { 
@@ -47,7 +49,7 @@ const responseSchema: Schema = {
     },
     inferred_location: {
       type: Type.OBJECT,
-      description: "AI's guess of the location based on visual cues",
+      description: "AI's guess of the location based on visual clues",
       properties: {
         city_or_landmark: {
           type: Type.STRING,
@@ -85,7 +87,7 @@ Using your internal knowledge base (simulating the MoRTH 'Road Accidents in Indi
 You MUST respond ONLY with a clean JSON object based on the provided schema.
 `;
 
-const riskSchema: Schema = {
+const riskSchema = {
   type: Type.OBJECT,
   properties: {
     location: { type: Type.STRING },
@@ -136,12 +138,12 @@ Rules:
 You MUST respond with a JSON object.
 `;
 
-const authoritySchema: Schema = {
+const authoritySchema = {
   type: Type.OBJECT,
   properties: {
     name: { type: Type.STRING, description: "Official name of the authority, e.g., 'Vijayawada Municipal Corporation - Zone II' or 'Suryaraopeta Police Station'" },
     type: { type: Type.STRING, enum: ['Police Station', 'Municipal Corporation', 'Public Works Department', 'Traffic Police'] },
-    email: { type: Type.STRING, description: "Official contact email. If unknown, generate a plausible placeholder ending in .gov.in or .org" },
+    email: { type: Type.STRING, description: "Official contact email. If unknown, generate a placeholder ending in .gov.in or .org" },
     address: { type: Type.STRING, description: "Full address of the office including pincode" },
     phone: { type: Type.STRING, description: "Landline contact number" },
     distance_km: { type: Type.STRING, description: "Estimated distance from the hazard location (e.g., '2.5 km')" }
@@ -151,16 +153,13 @@ const authoritySchema: Schema = {
 
 
 export const analyzeRoadImage = async (base64Image: string, mimeType: string, location: string): Promise<AnalysisResult> => {
-  const apiKey = process.env.API_KEY;
-  if (!apiKey) {
-    throw new Error("API Key not found in environment variables");
-  }
-
-  const ai = new GoogleGenAI({ apiKey });
+  // Use process.env.API_KEY directly to initialize GoogleGenAI
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      // Using gemini-3-flash-preview for general text and vision tasks as per guidelines
+      model: 'gemini-3-flash-preview',
       contents: {
         parts: [
           { text: getVisionPrompt(location) },
@@ -174,6 +173,7 @@ export const analyzeRoadImage = async (base64Image: string, mimeType: string, lo
       }
     });
 
+    // Access the .text property directly
     const text = response.text;
     if (!text) throw new Error("No response text received from Gemini");
 
@@ -186,14 +186,12 @@ export const analyzeRoadImage = async (base64Image: string, mimeType: string, lo
 };
 
 export const analyzeRiskProfile = async (location: string): Promise<RiskAnalysisResult> => {
-  const apiKey = process.env.API_KEY;
-  if (!apiKey) throw new Error("API Key not found");
-  
-  const ai = new GoogleGenAI({ apiKey });
+  // Always initialize with direct access to process.env.API_KEY
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-flash-preview',
       contents: {
         parts: [{ text: getRiskAnalysisPrompt(location) }]
       },
@@ -228,14 +226,12 @@ export const analyzeRiskProfile = async (location: string): Promise<RiskAnalysis
 };
 
 export const findRelevantAuthority = async (location: string): Promise<AuthorityDetails> => {
-  const apiKey = process.env.API_KEY;
-  if (!apiKey) throw new Error("API Key not found");
-  
-  const ai = new GoogleGenAI({ apiKey });
+  // Directly using process.env.API_KEY
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-flash-preview',
       contents: {
         parts: [{ text: getAuthorityPrompt(location) }]
       },
@@ -264,11 +260,8 @@ export const findRelevantAuthority = async (location: string): Promise<Authority
 };
 
 export const generateComplaintLetter = async (hazardData: AnalysisResult, analyticsSummary: string, language: string = 'en'): Promise<string> => {
-  const apiKey = process.env.API_KEY;
-  if (!apiKey) {
-    throw new Error("API Key not found");
-  }
-  const ai = new GoogleGenAI({ apiKey });
+  // Always initialize GoogleGenAI with { apiKey: process.env.API_KEY }
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
   const langName = language === 'hi' ? 'Hindi' : language === 'ta' ? 'Tamil' : language === 'te' ? 'Telugu' : 'English';
 
@@ -297,9 +290,10 @@ Draft the letter now in ${langName}.
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-flash-preview',
       contents: prompt,
     });
+    // Return text output via .text property
     return response.text || "Failed to generate letter.";
   } catch (error) {
     console.error("Gemini API Error (Letter):", error);

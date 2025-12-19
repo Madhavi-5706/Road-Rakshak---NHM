@@ -1,3 +1,4 @@
+
 const { app, BrowserWindow } = require('electron');
 const path = require('path');
 
@@ -18,6 +19,16 @@ function createWindow() {
 
   // Remove menu bar for cleaner look
   win.setMenuBarVisibility(false);
+
+  // Handle permission requests for camera/microphone
+  win.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
+    const allowedPermissions = ['media', 'camera', 'microphone', 'notifications', 'geolocation'];
+    if (allowedPermissions.includes(permission)) {
+      callback(true);
+    } else {
+      callback(false);
+    }
+  });
 
   if (isDev) {
     // Attempt to connect to Vite dev server

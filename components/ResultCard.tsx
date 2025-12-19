@@ -25,7 +25,9 @@ export const ResultCard: React.FC<ResultCardProps> = ({ result, riskResult, onRe
   const [showMailModal, setShowMailModal] = useState(false);
   const { t, language } = useLanguage();
 
-  // Map Refs
+  const [isScrolled, setIsScrolled] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
+
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const coordsCache = useRef<{location: string, lat: number, lng: number} | null>(null);
@@ -45,6 +47,12 @@ export const ResultCard: React.FC<ResultCardProps> = ({ result, riskResult, onRe
         }
     };
   }, []);
+
+  const handleScroll = () => {
+    if (contentRef.current) {
+        setIsScrolled(contentRef.current.scrollTop > 10);
+    }
+  };
 
   const initMap = async () => {
       if(!mapContainerRef.current) return;
@@ -209,7 +217,7 @@ export const ResultCard: React.FC<ResultCardProps> = ({ result, riskResult, onRe
     <div className="h-full flex flex-col bg-white border border-slate-200 rounded-lg overflow-hidden relative shadow-lg">
       
       {showMailModal && (
-        <div className="absolute inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in zoom-in-95 duration-200">
+        <div className="absolute inset-0 z-[60] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in zoom-in-95 duration-200">
             <div className="w-full max-w-sm bg-white border border-slate-200 rounded-xl p-6 shadow-2xl relative">
                 <button onClick={() => setShowMailModal(false)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 transition-colors">
                     <X className="w-5 h-5" />
@@ -236,7 +244,7 @@ export const ResultCard: React.FC<ResultCardProps> = ({ result, riskResult, onRe
       )}
 
       {/* Header Status Bar */}
-      <div className={`p-6 border-b border-slate-200 ${config.bg} flex justify-between items-center`}>
+      <div className={`p-6 border-b border-slate-200 ${config.bg} flex justify-between items-center relative z-10`}>
         <div className="flex items-center gap-4">
           <div className={`p-2 rounded-full bg-white border ${config.border} shadow-sm`}>
             {config.icon}
@@ -248,14 +256,25 @@ export const ResultCard: React.FC<ResultCardProps> = ({ result, riskResult, onRe
             </div>
           </div>
         </div>
-        <div className="text-right hidden sm:block">
-           <div className="text-xs text-slate-500 font-medium">{t('report_ref')}</div>
-           <div className="text-sm font-bold text-slate-700">RG-{Math.floor(Math.random()*10000)}</div>
+        
+        <div className="flex items-center gap-4">
+            <div className="text-right hidden sm:block">
+               <div className="text-xs text-slate-500 font-medium">{t('report_ref')}</div>
+               <div className="text-sm font-bold text-slate-700">RG-{Math.floor(Math.random()*10000)}</div>
+            </div>
+
+            <button 
+                onClick={onReset}
+                className="p-2 text-slate-400 hover:text-red-600 transition-colors hover:bg-white/50 rounded-full"
+                title="Dismiss Report"
+            >
+                <X className="w-6 h-6" />
+            </button>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-slate-200 bg-slate-50">
+      <div className="flex border-b border-slate-200 bg-slate-50 z-10">
         {tabs.map((tab) => (
             <button 
             key={tab.id}
@@ -271,141 +290,174 @@ export const ResultCard: React.FC<ResultCardProps> = ({ result, riskResult, onRe
         ))}
       </div>
 
-      {/* Body */}
-      <div className="flex-grow p-6 overflow-y-auto bg-white">
+      {/* Body Container with Scrolling Indicator */}
+      <div className="flex-grow relative overflow-hidden bg-white">
+        {isScrolled && <div className="absolute top-0 left-0 right-0 h-4 bg-gradient-to-b from-slate-900/5 to-transparent z-10 pointer-events-none"></div>}
         
-        {/* OVERVIEW */}
-        {activeTab === 'overview' && (
-          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-             
-             <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg shadow-inner">
-                <div className="text-xs text-slate-500 uppercase font-bold mb-2 flex justify-between">
-                   <span>{t('issue_identified')}</span>
-                   {userId && <span className="text-[10px] bg-slate-200 px-1 rounded text-slate-600">ID: {userId.slice(0,6)}</span>}
-                </div>
-                <div className="text-lg text-slate-900 font-bold mb-2">{result.hazard_detected}</div>
-                <div className="text-sm text-slate-600 leading-relaxed">
-                  {result.description}
-                </div>
-             </div>
-
-             <div className="space-y-3">
-                <div className="flex justify-between items-end">
-                    <div className="text-xs text-slate-500 font-bold uppercase flex items-center gap-2">
-                        <MapPin className="w-4 h-4" /> {t('location_details')}
+        <div 
+            ref={contentRef}
+            onScroll={handleScroll}
+            className="h-full p-6 overflow-y-auto"
+        >
+            {/* OVERVIEW */}
+            {activeTab === 'overview' && (
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg shadow-inner">
+                    <div className="text-xs text-slate-500 uppercase font-bold mb-2 flex justify-between">
+                    <span>{t('issue_identified')}</span>
+                    {userId && <span className="text-[10px] bg-slate-200 px-1 rounded text-slate-600">ID: {userId.slice(0,6)}</span>}
                     </div>
-                    {result.location && (
-                       <button onClick={handleGoogleMaps} className="flex items-center gap-1 text-india-navy hover:text-blue-700 text-xs font-bold">
-                           <ExternalLink className="w-3 h-3" /> {t('view_maps')}
-                       </button>
-                   )}
+                    <div className="text-lg text-slate-900 font-bold mb-2">{result.hazard_detected}</div>
+                    <div className="text-sm text-slate-600 leading-relaxed">
+                    {result.description}
+                    </div>
+                </div>
+
+                <div className="space-y-3">
+                    <div className="flex justify-between items-end">
+                        <div className="text-xs text-slate-500 font-bold uppercase flex items-center gap-2">
+                            <MapPin className="w-4 h-4" /> {t('location_details')}
+                        </div>
+                        {result.location && (
+                        <button onClick={handleGoogleMaps} className="flex items-center gap-1 text-india-navy hover:text-blue-700 text-xs font-bold">
+                            <ExternalLink className="w-3 h-3" /> {t('view_maps')}
+                        </button>
+                    )}
+                    </div>
+                    
+                    <div className="border border-slate-200 rounded-lg overflow-hidden shadow-sm">
+                        <div className="p-4 bg-slate-50 border-b border-slate-200">
+                            <div className="text-sm font-medium text-slate-800">{result.location}</div>
+                            {result.inferred_location && (
+                                <div className="mt-2 flex items-start gap-2 text-xs text-slate-500 bg-white p-2 rounded border border-slate-200">
+                                    <LocateFixed className="w-3 h-3 mt-0.5 text-india-navy" />
+                                    <div>
+                                        <span className="font-semibold text-india-navy">{t('ai_cross_reference')}:</span> {result.inferred_location.city_or_landmark} ({result.inferred_location.confidence_level} Confidence)
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                        <div className="w-full h-48 bg-slate-100 relative">
+                            <div ref={mapContainerRef} className="absolute inset-0 z-0"></div>
+                        </div>
+                    </div>
                 </div>
                 
-                <div className="border border-slate-200 rounded-lg overflow-hidden">
-                    <div className="p-4 bg-slate-50 border-b border-slate-200">
-                        <div className="text-sm font-medium text-slate-800">{result.location}</div>
-                        {result.inferred_location && (
-                             <div className="mt-2 flex items-start gap-2 text-xs text-slate-500 bg-white p-2 rounded border border-slate-200">
-                                <LocateFixed className="w-3 h-3 mt-0.5 text-india-navy" />
-                                <div>
-                                    <span className="font-semibold text-india-navy">{t('ai_cross_reference')}:</span> {result.inferred_location.city_or_landmark} ({result.inferred_location.confidence_level} Confidence)
-                                </div>
-                             </div>
-                        )}
+                {!isSafe && (
+                <button 
+                    onClick={() => setActiveTab('protocol')}
+                    className="w-full py-3 rounded bg-india-navy hover:bg-blue-800 text-white font-bold text-sm shadow-md transition-all flex items-center justify-center gap-2"
+                >
+                    {t('proceed_action')} <ArrowRight className="w-4 h-4" />
+                </button>
+                )}
+            </div>
+            )}
+            
+            {activeTab === 'intelligence' && riskResult && (
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                    <div className="flex items-center gap-2 text-india-navy mb-3">
+                        <BarChart3 className="w-4 h-4" />
+                        <span className="text-xs font-bold uppercase">{t('data_insights')}</span>
                     </div>
-                    <div className="w-full h-48 bg-slate-100 relative">
-                        <div ref={mapContainerRef} className="absolute inset-0 z-0"></div>
+                    <p className="text-sm text-slate-600 leading-relaxed">
+                    {riskResult.analytics_summary}
+                    </p>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                    <div className="p-4 border border-slate-200 rounded-lg bg-white shadow-sm hover:shadow-md transition-shadow">
+                        <div className="text-xs text-slate-500 font-bold uppercase flex items-center gap-2 mb-2">
+                        <TrendingUp className="w-3 h-3" /> {t('leading_cause')}
+                        </div>
+                        <div className="text-sm font-bold text-slate-800">{riskResult.most_common_cause}</div>
+                    </div>
+
+                    <div className="p-4 border border-slate-200 rounded-lg bg-red-50/50 hover:bg-red-50 transition-colors">
+                        <div className="text-xs text-red-700 font-bold uppercase flex items-center gap-2 mb-2">
+                        <AlertCircle className="w-3 h-3" /> {t('high_risk_zones')}
+                        </div>
+                        <div className="text-xs text-slate-700 truncate">{riskResult.top_hotspots[0]}</div>
                     </div>
                 </div>
-             </div>
-             
-             {!isSafe && (
-               <button 
-                  onClick={() => setActiveTab('protocol')}
-                  className="w-full py-3 rounded bg-india-navy hover:bg-blue-800 text-white font-bold text-sm shadow-md transition-all flex items-center justify-center gap-2"
-               >
-                  {t('proceed_action')} <ArrowRight className="w-4 h-4" />
-               </button>
-             )}
-          </div>
-        )}
-        
-        {/* Same Intelligence and Protocol tabs as before, just kept concise for XML limit */}
-        {activeTab === 'intelligence' && riskResult && (
-           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
-                 <div className="flex items-center gap-2 text-india-navy mb-3">
-                    <BarChart3 className="w-4 h-4" />
-                    <span className="text-xs font-bold uppercase">{t('data_insights')}</span>
-                 </div>
-                 <p className="text-sm text-slate-600 leading-relaxed">
-                   {riskResult.analytics_summary}
-                 </p>
-              </div>
-              
-              {/* Simplified Grid for Dashboard Look */}
-              <div className="grid grid-cols-2 gap-4">
-                 <div className="p-4 border border-slate-200 rounded-lg bg-white shadow-sm hover:shadow-md transition-shadow">
-                    <div className="text-xs text-slate-500 font-bold uppercase flex items-center gap-2 mb-2">
-                       <TrendingUp className="w-3 h-3" /> {t('leading_cause')}
-                    </div>
-                    <div className="text-sm font-bold text-slate-800">{riskResult.most_common_cause}</div>
-                 </div>
 
-                 <div className="p-4 border border-slate-200 rounded-lg bg-red-50/50 hover:bg-red-50 transition-colors">
-                    <div className="text-xs text-red-700 font-bold uppercase flex items-center gap-2 mb-2">
-                       <AlertCircle className="w-3 h-3" /> {t('high_risk_zones')}
+                <div className="p-4 border border-slate-200 rounded-lg bg-white">
+                    <div className="text-xs text-slate-500 font-bold uppercase mb-4">{t('risk_breakdown')}</div>
+                    <div className="space-y-3">
+                        {riskResult.risk_breakdown.map((r, i) => (
+                            <div key={i} className="flex flex-col gap-1">
+                                <div className="flex justify-between text-[10px] font-bold">
+                                    <span className="text-slate-700">{r.risk_level}</span>
+                                    <span className="text-india-navy">{r.percentage}%</span>
+                                </div>
+                                <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                                    <div 
+                                        className={`h-full rounded-full ${r.risk_level === 'CRITICAL' ? 'bg-red-500' : r.risk_level === 'HIGH' ? 'bg-orange-500' : r.risk_level === 'MEDIUM' ? 'bg-yellow-500' : 'bg-green-500'}`}
+                                        style={{ width: `${r.percentage}%` }}
+                                    ></div>
+                                </div>
+                            </div>
+                        ))}
                     </div>
-                    <div className="text-xs text-slate-700 truncate">{riskResult.top_hotspots[0]}</div>
-                 </div>
-              </div>
-           </div>
-        )}
-        
-        {activeTab === 'protocol' && (
-           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-              {!letter ? (
-                 <div className="text-center py-8 space-y-4">
-                    <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto text-india-navy">
-                       <FileCheck className="w-8 h-8" />
-                    </div>
-                    <div>
-                       <h3 className="text-slate-900 font-bold">{t('generate_complaint')}</h3>
-                       <p className="text-sm text-slate-500 mt-1 max-w-xs mx-auto">
-                         {t('draft_instruction')}
-                       </p>
-                    </div>
-                    <button onClick={handleGenerateLetter} disabled={isGenerating} className="mt-2 px-6 py-2 bg-india-navy hover:bg-blue-800 text-white font-bold rounded shadow-sm flex items-center gap-2 mx-auto text-sm">
-                      {isGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
-                      {isGenerating ? t('drafting') : t('draft_button')}
-                    </button>
-                 </div>
-              ) : (
-                 <div className="space-y-6">
-                    {authority && (
-                      <div className="bg-slate-50 border border-slate-200 rounded-lg p-5">
-                          <div className="flex items-center gap-2 mb-3">
-                             <Building2 className="w-5 h-5 text-india-navy" />
-                             <h4 className="font-bold text-slate-800">{authority.name}</h4>
-                          </div>
-                          <div className="text-sm text-slate-600 ml-7 mb-4">{authority.address}</div>
-                      </div>
-                    )}
-                    <div className="relative">
-                       <div className="bg-white border border-slate-300 rounded-lg p-5 h-64 overflow-y-auto text-sm text-slate-800 leading-relaxed font-mono whitespace-pre-wrap shadow-inner relative">
-                          <div className="absolute top-2 right-2 px-2 py-0.5 bg-slate-100 text-[9px] text-slate-400 font-bold rounded">ENCRYPTED_DRAFT</div>
-                          {letter}
-                       </div>
-                    </div>
-                    <div className="grid grid-cols-1 gap-3">
-                        <button onClick={() => setShowMailModal(true)} className="w-full py-3 bg-india-green hover:bg-green-700 text-white font-bold rounded shadow-md flex items-center justify-center gap-2 text-sm uppercase">
-                           <Send className="w-4 h-4" /> {t('send_complaint')}
+                </div>
+            </div>
+            )}
+            
+            {activeTab === 'protocol' && (
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                {!letter ? (
+                    <div className="text-center py-8 space-y-4">
+                        <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto text-india-navy">
+                        <FileCheck className="w-8 h-8" />
+                        </div>
+                        <div>
+                        <h3 className="text-slate-900 font-bold">{t('generate_complaint')}</h3>
+                        <p className="text-sm text-slate-500 mt-1 max-w-xs mx-auto">
+                            {t('draft_instruction')}
+                        </p>
+                        </div>
+                        <button onClick={handleGenerateLetter} disabled={isGenerating} className="mt-2 px-6 py-2 bg-india-navy hover:bg-blue-800 text-white font-bold rounded shadow-sm flex items-center gap-2 mx-auto text-sm">
+                        {isGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
+                        {isGenerating ? t('drafting') : t('draft_button')}
                         </button>
                     </div>
-                 </div>
-              )}
-           </div>
-        )}
+                ) : (
+                    <div className="space-y-6">
+                        {authority && (
+                        <div className="bg-slate-50 border border-slate-200 rounded-lg p-5">
+                            <div className="flex items-center gap-2 mb-3">
+                                <Building2 className="w-5 h-5 text-india-navy" />
+                                <h4 className="font-bold text-slate-800">{authority.name}</h4>
+                            </div>
+                            <div className="text-sm text-slate-600 ml-7 mb-4">{authority.address}</div>
+                            <div className="grid grid-cols-2 gap-4 ml-7">
+                                <div className="flex items-center gap-2 text-xs text-slate-500">
+                                    <Phone className="w-3 h-3" /> {authority.phone}
+                                </div>
+                                <div className="flex items-center gap-2 text-xs text-slate-500 truncate">
+                                    <Mail className="w-3 h-3" /> {authority.email}
+                                </div>
+                            </div>
+                        </div>
+                        )}
+                        <div className="relative group">
+                            <div className="bg-white border border-slate-300 rounded-lg p-5 min-h-[16rem] h-auto text-sm text-slate-800 leading-relaxed font-mono whitespace-pre-wrap shadow-inner relative">
+                                <div className="absolute top-2 right-2 px-2 py-0.5 bg-slate-100 text-[9px] text-slate-400 font-bold rounded">ENCRYPTED_DRAFT</div>
+                                {letter}
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-1 gap-3">
+                            <button onClick={() => setShowMailModal(true)} className="w-full py-3 bg-india-green hover:bg-green-700 text-white font-bold rounded shadow-md flex items-center justify-center gap-2 text-sm uppercase">
+                            <Send className="w-4 h-4" /> {t('send_complaint')}
+                            </button>
+                        </div>
+                    </div>
+                )}
+            </div>
+            )}
+        </div>
       </div>
     </div>
   );

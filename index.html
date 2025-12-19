@@ -24,6 +24,38 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 
+    <style>
+      /* Custom Scrollbar Styling */
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #f1f5f9;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #000080;
+        border-radius: 10px;
+        border: 2px solid #f1f5f9;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #138808;
+      }
+      
+      /* Smooth Scrolling for the whole document */
+      html {
+        scroll-behavior: smooth;
+      }
+
+      /* Indicator for scrollable areas */
+      .scroll-shadow-top {
+        box-shadow: inset 0 10px 10px -10px rgba(0,0,0,0.1);
+      }
+      .scroll-shadow-bottom {
+        box-shadow: inset 0 -10px 10px -10px rgba(0,0,0,0.1);
+      }
+    </style>
+
     <script>
       tailwind.config = {
         theme: {
@@ -79,8 +111,8 @@
 }
 </script>
 </head>
-  <body class="bg-slate-50 text-slate-800 antialiased selection:bg-india-saffron/20 selection:text-india-navy overflow-x-hidden">
-    <div id="root" class="h-screen w-screen flex flex-col"></div>
+  <body class="bg-slate-50 text-slate-800 antialiased selection:bg-india-saffron/20 selection:text-india-navy">
+    <div id="root" class="min-h-screen flex flex-col"></div>
     <script type="module" src="./index.tsx"></script>
   </body>
 </html>
