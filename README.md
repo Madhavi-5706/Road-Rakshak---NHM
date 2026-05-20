@@ -2,16 +2,12 @@ Markdown# 🛣️ Road Rakshak
 
 Road Rakshak is an end-to-end community-driven road safety and hazard reporting ecosystem. The project enables daily commuters to report real-time road hurdles (like potholes, broken signals, or waterlogging) and pins verified incidents onto a public live-map. It acts as a bridge between citizens and local road administration to build a zero-accident ecosystem.
 
----
-
 ## 🏗️ Architecture Overview
 
 The project is split into three distinct, decoupled components:
 1. **Road Rakshak User Application:** The interface where citizens report hurdles, view live map data, and access road safety articles.
 2. **Road Rakshak Admin Dashboard:** A secure control panel for authorities to verify reports based on severity, clear resolved spam, and publish news alerts.
 3. **Road Rakshak Server:** A secure, high-performance RESTful API backend handling data validation, image processing, real-time sync, and geospatial coordinate queries.
-
----
 
 ## 🛠️ Technology Stack
 
@@ -30,15 +26,37 @@ The project is split into three distinct, decoupled components:
 *   **JSON Web Tokens (JWT) & Bcrypt** – Stateless authorization mechanics and structural password hashing.
 *   **Nodemailer** – Automated email dispatch pipelines for account and report verifications.
 
----
-
 ## 🔄 System Workflows & Flowcharts
 
 ### 1. The Citizen Hazard Reporting Pipeline
-[User App] ──( Captures Geo-Location + Photo )──> [Multer / Server Storage]│[MongoDB (Status: Pending)]│[Admin Dashboard] <──( Pulls Queue via API )──────────────┘│├── [ Approve ] ──> Status: Verified ──> (Pushed via WebSockets) ──> [Live Public Map]└── [ Reject  ] ──> Status: Dropped (Spam prevention)
+[User App] ──( Captures Geo-Location + Photo )──> [Multer / Server Storage]
+│
+[MongoDB (Status: Pending)]
+│
+[Admin Dashboard] <──( Pulls Queue via API )──────────────┘
+│
+├── [ Approve ] ──> Status: Verified ──> (Pushed via WebSockets) ──> [Live Public Map]
+└── [ Reject  ] ──> Status: Dropped (Spam prevention)
+
 ### 2. Live Report Verification State Flow Chart
-┌───────────────┐        ┌──────────────┐        ┌─────────────┐│  User Submits │ ─────> │ Status:      │ ─────> │    Admin    ││  Hurdle Proof │        │ PENDING      │        │ Review Loop │└───────────────┘        └──────────────┘        └─────────────┘│           │Approve │           │ Reject (Spam)▼           ▼┌─────────────┐  ┌─────────────┐│ Status:     │  │  Purged /   ││ VERIFIED    │  │  Archived   │└─────────────┘  └─────────────┘││ (Issue Fixed by City)▼┌─────────────┐│   Delete/   ││  Resolved   │└─────────────┘
----
+┌───────────────┐        ┌──────────────┐        ┌─────────────┐
+│  User Submits │ ─────> │ Status:      │ ─────> │    Admin    │
+│  Hurdle Proof │        │ PENDING      │        │ Review Loop │
+└───────────────┘        └──────────────┘        └─────────────┘
+│           │
+Approve │           │ Reject (Spam)
+▼           ▼
+┌─────────────┐  ┌─────────────┐
+│ Status:     │  │  Purged /   │
+│ VERIFIED    │  │  Archived   │
+└─────────────┘  └─────────────┘
+│
+│ (Issue Fixed by City)
+▼
+┌─────────────┐
+│   Delete/   │
+│  Resolved   │
+└─────────────┘
 
 ## ✨ Core Features
 
@@ -47,8 +65,6 @@ The project is split into three distinct, decoupled components:
 *   📍 **Geospatial Mapping & Spam Prevention:** Hazards are locked to verified GPS strings (`is-valid-geo-coordinates`). Incident pins populate the map **only** post admin verification.
 *   ⚡ **Instant Socket Updates:** Live operational nodes receive immediate map re-renders the moment an admin validates a ticket.
 *   📰 **Community Safety Feeds:** Direct portal for administrative writers to post safety guidelines, regional news blocks, and road blockage reports.
-
----
 
 ## ⚙️ Development Environment Configuration
 
@@ -60,7 +76,6 @@ The project is split into three distinct, decoupled components:
 ### Installation Blueprint
 
 #### 1. Server Configuration
-```bash
 # Clone the server repository
 git clone [https://github.com/krishna9304/road-rakshak-server.git](https://github.com/krishna9304/road-rakshak-server.git)
 cd road-rakshak-server
@@ -72,7 +87,9 @@ npm install
 cp .env.example .env
 Note: Open your newly created .env file and configure your MONGODB_URI, JWT_SECRET, PORT, and email transporter options for Nodemailer.Bash# Initialize development server
 npm run dev
-2. Admin Dashboard ConfigurationBash# Clone the admin panel repository
+
+**2. Admin Dashboard Configuration**
+# Clone the admin panel repository
 git clone [https://github.com/krishna9304/road-rakshak-admin.git](https://github.com/krishna9304/road-rakshak-admin.git)
 cd road-rakshak-admin
 
@@ -81,4 +98,14 @@ yarn install
 
 # Run the local webpack dev instance
 yarn start
-The client portal will spin up by default at http://localhost:3000.📂 Base API Endpoint ArchitectureMethodEndpointDescriptionAuth ScopePOST/api/auth/registerRegisters a standard user/admin node.PublicPOST/api/auth/loginValidates accounts, returns signature JWT.PublicGET/api/hurdles/allPulls all verified geo-coordinates for mapping.PublicPOST/api/hurdles/reportSubmits hazard proof using image payloads.Verified UserPATCH/api/admin/hurdle/:idUpdates the severity state or verifies hurdle.Admin OnlyDELETE/api/admin/hurdle/:idRemotely deletes / clears fixed pins from database.Admin Only📜 LicenseDistributed under the ISC License. See LICENSE inside individual code blocks for detailed property declarations.
+
+## 📂 Base API Endpoint Architecture
+
+| Method   |    Endpoint        |            Description                           | Auth Scope |
+| :---     | :--- | :--- | :--- |
+| **POST** | `/api/auth/register` | Registers a standard user or administrative node. | Public |
+| **POST** | `/api/auth/login`    | Validates credentials and returns a secure JWT payload. | Public |
+| **GET** | `/api/hurdles/all`    | Pulls all verified geo-coordinates to populate the live map. | Public |
+| **POST** | `/api/hurdles/report` | Submits a new hazard report containing image payloads and coordinates. | Verified User |
+| **PATCH** | `/api/admin/hurdle/:id` | Updates the status (Pending/Verified) or severity level of a report. | Admin Only |
+| **DELETE** | `/api/admin/hurdle/:id` | Remotely purges or archives resolved pins from the database. | Admin Only |
