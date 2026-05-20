@@ -26,32 +26,50 @@ The project is split into three distinct, decoupled components:
 *   **JSON Web Tokens (JWT) & Bcrypt** – Stateless authorization mechanics and structural password hashing.
 *   **Nodemailer** – Automated email dispatch pipelines for account and report verifications.
 
+## 🔄 System Workflows
+
 ### 1. Citizen Hazard Reporting Pipeline
-```mermaid
-graph TD
-    A[User App: Capture Geo-Location + Photo] --> B[Multer / Backend Server Storage]
-    B --> C[MongoDB: Status Set to PENDING]
-    C --> D{Admin Review Loop}
-    D -- Approve --> E[Status: VERIFIED]
-    D -- Reject --> F[Status: DROPPED / Spam Purge]
-    E --> G[Socket.io Real-time Push]
-    G --> H[Live Public Map Updated]
----
+
+```text
+ [ User App ] ───► Captures Geo-Location + Photo Proof
+                       │
+                       ▼
+         [ Multer / Backend Server Storage ]
+                       │
+                       ▼
+          [ MongoDB (Status: PENDING) ]
+                       │
+                       ▼
+             { Admin Review Loop }
+                       │
+         ┌─────────────┴─────────────┐
+         ▼                           ▼
+    ( Approve )                 ( Reject )
+         │                           │
+         ▼                           ▼
+ [ Status: VERIFIED ]        [ Status: DROPPED ]
+         │                     (Spam Prevention)
+         ▼
+ [ Socket.io Push ]
+         │
+         ▼
+[ Live Public Map Updated ]
 
 
----
-
-```markdown
 ### 2. Live Report Verification State Flow Chart
-```mermaid
-stateDiagram-v2
-    [*] --> PENDING : User Submits Hurdle Proof
-    PENDING --> VERIFIED : Admin Approves Report
-    PENDING --> DROPPED : Admin Rejects Spam
-    DROPPED --> [*]
-    VERIFIED --> RESOLVED : Issue Fixed by City
-    RESOLVED --> [*] : Pin Archived/Purged
-
+[*] Initial Submission
+          │
+          ▼
+     [ PENDING ] ───► (Admin Reviews Report)
+          │
+          ├───► Admin Approves ───► [ VERIFIED Map Pin ]
+          │                                │
+          │                                └──► Issue Fixed ──► [ RESOLVED ]
+          │                                                         │
+          │                                                         ▼
+          │                                                    [ ARCHIVED ]
+          │
+          └───► Admin Rejects ────► [ DROPPED (Spam Purge) ]
 ## ✨ Core Features
 
 *   🔒 **Secure Administrative Layer:** Complete Bcrypt configuration protecting internal dashboards from unauthorized access.
