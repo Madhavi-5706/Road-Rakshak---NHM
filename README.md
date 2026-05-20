@@ -26,8 +26,6 @@ The project is split into three distinct, decoupled components:
 *   **JSON Web Tokens (JWT) & Bcrypt** – Stateless authorization mechanics and structural password hashing.
 *   **Nodemailer** – Automated email dispatch pipelines for account and report verifications.
 
-## 🔄 System Workflows
-
 ### 1. Citizen Hazard Reporting Pipeline
 ```mermaid
 graph TD
@@ -38,13 +36,18 @@ graph TD
     D -- Reject --> F[Status: DROPPED / Spam Purge]
     E --> G[Socket.io Real-time Push]
     G --> H[Live Public Map Updated]
+---
 
+
+---
+
+```markdown
 ### 2. Live Report Verification State Flow Chart
 ```mermaid
 stateDiagram-v2
     [*] --> PENDING : User Submits Hurdle Proof
     PENDING --> VERIFIED : Admin Approves Report
-    PENDING --> DROPPED : Admin Rejects (Spam)
+    PENDING --> DROPPED : Admin Rejects Spam
     DROPPED --> [*]
     VERIFIED --> RESOLVED : Issue Fixed by City
     RESOLVED --> [*] : Pin Archived/Purged
