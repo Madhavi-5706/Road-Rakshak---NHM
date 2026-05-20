@@ -26,37 +26,27 @@ The project is split into three distinct, decoupled components:
 *   **JSON Web Tokens (JWT) & Bcrypt** – Stateless authorization mechanics and structural password hashing.
 *   **Nodemailer** – Automated email dispatch pipelines for account and report verifications.
 
-## 🔄 System Workflows & Flowcharts
+## 🔄 System Workflows
 
-### 1. The Citizen Hazard Reporting Pipeline
-[User App] ──( Captures Geo-Location + Photo )──> [Multer / Server Storage]
-│
-[MongoDB (Status: Pending)]
-│
-[Admin Dashboard] <──( Pulls Queue via API )──────────────┘
-│
-├── [ Approve ] ──> Status: Verified ──> (Pushed via WebSockets) ──> [Live Public Map]
-└── [ Reject  ] ──> Status: Dropped (Spam prevention)
+### 1. Citizen Hazard Reporting Pipeline
+```mermaid
+graph TD
+    A[User App: Capture Geo-Location + Photo] --> B[Multer / Backend Server Storage]
+    B --> C[MongoDB: Status Set to PENDING]
+    C --> D{Admin Review Loop}
+    D -- Approve --> E[Status: VERIFIED]
+    D -- Reject --> F[Status: DROPPED / Spam Purge]
+    E --> G[Socket.io Real-time Push]
+    G --> H[Live Public Map Updated]
 
 ### 2. Live Report Verification State Flow Chart
-┌───────────────┐        ┌──────────────┐        ┌─────────────┐
-│  User Submits │ ─────> │ Status:      │ ─────> │    Admin    │
-│  Hurdle Proof │        │ PENDING      │        │ Review Loop │
-└───────────────┘        └──────────────┘        └─────────────┘
-│           │
-Approve │           │ Reject (Spam)
-▼           ▼
-┌─────────────┐  ┌─────────────┐
-│ Status:     │  │  Purged /   │
-│ VERIFIED    │  │  Archived   │
-└─────────────┘  └─────────────┘
-│
-│ (Issue Fixed by City)
-▼
-┌─────────────┐
-│   Delete/   │
-│  Resolved   │
-└─────────────┘
+stateDiagram-v2
+    [*] --> PENDING : User Submits Hurdle Proof
+    PENDING --> VERIFIED : Admin Approves Report
+    PENDING --> DROPPED : Admin Rejects (Spam)
+    DROPPED --> [*]
+    VERIFIED --> RESOLVED : Issue Fixed by City
+    RESOLVED --> [*] : Pin Archived/Purged
 
 ## ✨ Core Features
 
