@@ -40,6 +40,7 @@ graph TD
     G --> H[Live Public Map Updated]
 
 ### 2. Live Report Verification State Flow Chart
+```mermaid
 stateDiagram-v2
     [*] --> PENDING : User Submits Hurdle Proof
     PENDING --> VERIFIED : Admin Approves Report
