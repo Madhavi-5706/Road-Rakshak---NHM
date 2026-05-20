@@ -121,3 +121,4 @@ yarn start
 | **POST** | `/api/hurdles/report` | Submits a new hazard report containing image payloads and coordinates. | Verified User |
 | **PATCH** | `/api/admin/hurdle/:id` | Updates the status (Pending/Verified) or severity level of a report. | Admin Only |
 | **DELETE** | `/api/admin/hurdle/:id` | Remotely purges or archives resolved pins from the database. | Admin Only |
+
